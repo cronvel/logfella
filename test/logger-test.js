@@ -24,6 +24,8 @@
 	SOFTWARE.
 */
 
+/* global describe, it */
+
 
 
 /*
@@ -44,19 +46,7 @@
 
 var loggerkit = require( '../lib/logger.js' ) ;
 var async = require( 'async-kit' ) ;
-var expect = require( 'expect.js' ) ;
-
-
-
-
-
-			/* Helper functions */
-
-
-
-function helper()
-{
-}
+//var expect = require( 'expect.js' ) ;
 
 
 
