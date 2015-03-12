@@ -63,21 +63,24 @@ describe( "logger" , function() {
 		console.log() ;
 		var logger = loggerkit.Logger.create() ;
 		
-		//logger.setDefaultDomain( "toto" ) ;
+		logger.setDefaultDomain( 'default-domain' ) ;
 		logger.setGlobalLevel( 'trace' ) ;
-		logger.addTransport( 'console' , 'info' , { color: true } ) ;
-		logger.addTransport( 'files' , 'trace' , { path: __dirname + '/log' } ) ;
 		
-		//logger.info( "call me later" ) ;
+		//logger.addTransport( 'console' , 'info' , { color: true } ) ;
+		logger.addTransport( 'console' , 'info' , { output: process.stderr } ) ;
+		logger.addTransport( 'files' , 'trace' , { color: true , path: __dirname + '/log' } ) ;
+		
+		logger.info( null , 'call me later' ) ;
+		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
 		
 		async.do( [
-			[ logger.trace , "mocha" , "Blah" ] ,
-			[ logger.debug , "mocha" , "Blah" ] ,
-			[ logger.verbose , "mocha" , "Blah" ] ,
-			[ logger.info , "mocha" , "Blah" ] ,
-			[ logger.warning , "mocha" , "Blah" ] ,
-			[ logger.error , "mocha" , "Blah" ] ,
-			[ logger.fatal , "mocha" , "Blah" ]
+			[ logger.trace , 'mocha' , 'Blah' ] ,
+			[ logger.debug , 'mocha' , 'Blah' ] ,
+			[ logger.verbose , 'mocha' , 'Blah' ] ,
+			[ logger.info , 'mocha' , 'Blah' ] ,
+			[ logger.warning , 'mocha' , 'Blah' ] ,
+			[ logger.error , 'mocha' , 'Blah: %s' , 'formated' ] ,
+			[ logger.fatal , 'mocha' , 'Blah' ]
 		] )
 		.exec( done ) ;
 	} ) ;
