@@ -1,7 +1,7 @@
 {
   "name": "logger-kit",
   "version": "0.0.0",
-  "description": "Work in progress...",
+  "description": "Minimalistic logger",
   "main": "lib/logger.js",
   "directories": {
     "test": "test"
