@@ -62,25 +62,32 @@ describe( "logger" , function() {
 		
 		console.log() ;
 		var logger = Logger.create() ;
+		var mochaLogger = logger.use( 'mocha' ) ;
 		
-		logger.setDefaultDomain( 'default-domain' ) ;
-		logger.setGlobalLevel( 'trace' ) ;
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
 		
 		//logger.addTransport( 'console' , 'info' , { color: true } ) ;
-		logger.addTransport( 'console' , 'info' , { output: process.stderr } ) ;
-		logger.addTransport( 'files' , 'trace' , { color: true , path: __dirname + '/log' } ) ;
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'files' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
 		
 		logger.info( null , 'call me later' ) ;
 		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
+		logger.log( 5 , null , 'using integer' ) ;
+		
+		mochaLogger.log( 'warning' , 'This is the mocha logger' ) ;
+		mochaLogger.info( 'This is the mocha logger x2' ) ;
 		
 		async.do( [
-			[ logger.trace , 'mocha' , 'Blah' ] ,
-			[ logger.debug , 'mocha' , 'Blah' ] ,
-			[ logger.verbose , 'mocha' , 'Blah' ] ,
-			[ logger.info , 'mocha' , 'Blah' ] ,
-			[ logger.warning , 'mocha' , 'Blah' ] ,
-			[ logger.error , 'mocha' , 'Blah: %s' , 'formated' ] ,
-			[ logger.fatal , 'mocha' , 'Blah' ]
+			[ logger.trace.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.debug.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.verbose.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.info.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.warning.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.error.bind( logger ) , 'my-domain' , 'Blah: %s' , 'formated' ] ,
+			[ logger.fatal.bind( logger ) , 'my-domain' , 'Blah' ]
 		] )
 		.exec( done ) ;
 	} ) ;
