@@ -44,7 +44,7 @@
 
 
 
-var loggerkit = require( '../lib/logger.js' ) ;
+var Logger = require( '../lib/Logger.js' ) ;
 var async = require( 'async-kit' ) ;
 //var expect = require( 'expect.js' ) ;
 
@@ -61,7 +61,7 @@ describe( "logger" , function() {
 	it( "should blah" , function( done ) {
 		
 		console.log() ;
-		var logger = loggerkit.Logger.create() ;
+		var logger = Logger.create() ;
 		
 		logger.setDefaultDomain( 'default-domain' ) ;
 		logger.setGlobalLevel( 'trace' ) ;
