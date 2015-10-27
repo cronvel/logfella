@@ -70,7 +70,8 @@ describe( "Logger" , function() {
 		
 		//logger.addTransport( 'console' , 'info' , { color: true } ) ;
 		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
-		logger.addTransport( 'files' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
+		logger.addTransport( 'scatteredFiles' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
+		logger.addTransport( 'file' , { minLevel: 'trace' , color: true , path: __dirname + '/log/app.log' } ) ;
 		
 		logger.info( null , 'call me later' ) ;
 		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
