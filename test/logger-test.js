@@ -79,6 +79,8 @@ describe( "logger" , function() {
 		
 		mochaLogger.log( 'warning' , 'This is the mocha logger' ) ;
 		mochaLogger.info( 'This is the mocha logger x2' ) ;
+		logger.debug( null , 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
+		mochaLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
 		
 		async.do( [
 			[ logger.trace.bind( logger ) , 'my-domain' , 'Blah' ] ,
