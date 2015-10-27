@@ -56,11 +56,10 @@ var async = require( 'async-kit' ) ;
 
 
 
-describe( "logger" , function() {
+describe( "Logger" , function() {
 	
-	it( "should blah" , function( done ) {
+	it( "misc tests" , function( done ) {
 		
-		console.log() ;
 		var logger = Logger.create() ;
 		var mochaLogger = logger.use( 'mocha' ) ;
 		
@@ -72,6 +71,39 @@ describe( "logger" , function() {
 		//logger.addTransport( 'console' , 'info' , { color: true } ) ;
 		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
 		logger.addTransport( 'files' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
+		
+		logger.info( null , 'call me later' ) ;
+		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
+		logger.log( 5 , null , 'using integer' ) ;
+		
+		mochaLogger.log( 'warning' , 'This is the mocha logger' ) ;
+		mochaLogger.info( 'This is the mocha logger x2' ) ;
+		logger.debug( null , 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
+		mochaLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
+		
+		async.do( [
+			[ logger.trace.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.debug.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.verbose.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.info.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.warning.bind( logger ) , 'my-domain' , 'Blah' ] ,
+			[ logger.error.bind( logger ) , 'my-domain' , 'Blah: %s' , 'formated' ] ,
+			[ logger.fatal.bind( logger ) , 'my-domain' , 'Blah' ]
+		] )
+		.exec( done ) ;
+	} ) ;
+	
+	it( "full setup" , function( done ) {
+		
+		var logger = Logger.create( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain' ,
+			transports: [
+				{ type: 'console' , color: true , output: process.stderr }
+			]
+		} ) ;
+		
+		var mochaLogger = logger.use( 'mocha' ) ;
 		
 		logger.info( null , 'call me later' ) ;
 		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
