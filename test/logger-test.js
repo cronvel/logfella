@@ -161,6 +161,50 @@ describe( "Logger" , function() {
 		] )
 		.exec( done ) ;
 	} ) ;
+	
+	it( "Errors" , function() {
+		
+		var logger = Logger.create() ;
+		var mochaLogger = logger.use( 'mocha' ) ;
+		
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.error( null , new Error( 'Something bad happens' ) ) ;
+	} ) ;
+	
+	it( "Variable inspection" , function() {
+		
+		var logger = Logger.create() ;
+		var mochaLogger = logger.use( 'mocha' ) ;
+		
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.error( null , { one: 1 , two: 'TWO!' } ) ;
+	} ) ;
+	
+	it( "format color" , function() {
+		
+		var logger = Logger.create() ;
+		
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		
+		logger.info( null , 'some format inspect %I' , { one: 1 , two: 'TWO!' } ) ;
+		logger.error( null , 'some error %E' , new Error( 'Something bad happens' ) ) ;
+	} ) ;
+	
 } ) ;
 
 
