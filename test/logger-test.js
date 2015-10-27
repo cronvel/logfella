@@ -28,21 +28,6 @@
 
 
 
-/*
-	TODO:
-	
-	Async.EventEmitter
-	Async.Plan:
-		clone()
-		execAction()
-		execMap() & exec()
-		export()
-	Event:
-		progress
-		finish
-*/
-
-
 
 var Logger = require( '../lib/Logger.js' ) ;
 var async = require( 'async-kit' ) ;
