@@ -43,6 +43,24 @@ var async = require( 'async-kit' ) ;
 
 describe( "Logger" , function() {
 	
+	it( "Single test" , function() {
+		
+		var logger = Logger.create() ;
+		var mochaLogger = logger.use( 'mocha' ) ;
+		
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'scatteredFiles' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
+		logger.addTransport( 'file' , { minLevel: 'trace' , color: true , path: __dirname + '/log/app.log' } ) ;
+		
+		logger.debug( null , 'Hello %s!', 'world' ) ;
+		logger.info( 'my-domain' , 'Hello %s!', 'my-domain' ) ;
+	} ) ;
+	
 	it( "misc tests" , function( done ) {
 		
 		var logger = Logger.create() ;
@@ -172,7 +190,7 @@ describe( "Logger" , function() {
 		} ) ;
 		
 		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
-		logger.error( null , { one: 1 , two: 'TWO!' } ) ;
+		logger.debug( null , { one: 1 , two: 'TWO!' } ) ;
 	} ) ;
 	
 	it( "format color" , function() {
