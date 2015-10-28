@@ -43,7 +43,7 @@ var async = require( 'async-kit' ) ;
 
 describe( "Logger" , function() {
 	
-	it( "Single test" , function() {
+	it( "single test" , function() {
 		
 		var logger = Logger.create() ;
 		
@@ -52,7 +52,7 @@ describe( "Logger" , function() {
 			defaultDomain: 'default-domain'
 		} ) ;
 		
-		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr , includeIdMeta: true } ) ;
 		logger.addTransport( 'scatteredFiles' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
 		logger.addTransport( 'file' , { minLevel: 'trace' , color: true , path: __dirname + '/log/app.log' } ) ;
 		
