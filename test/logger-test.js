@@ -46,7 +46,6 @@ describe( "Logger" , function() {
 	it( "Single test" , function() {
 		
 		var logger = Logger.create() ;
-		var mochaLogger = logger.use( 'mocha' ) ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,
@@ -59,6 +58,24 @@ describe( "Logger" , function() {
 		
 		logger.debug( null , 'Hello %s!', 'world' ) ;
 		logger.info( 'my-domain' , 'Hello %s!', 'my-domain' ) ;
+	} ) ;
+	
+	it( "including a code and meta" , function() {
+		
+		var logger = Logger.create() ;
+		
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'scatteredFiles' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
+		logger.addTransport( 'file' , { minLevel: 'trace' , color: true , path: __dirname + '/log/app.log' } ) ;
+		
+		logger.error( null , 'ENOENT' , "File '%s' not found", 'toto.txt' ) ;
+		logger.warning( null , { code: 'ENOENT' , file: 'toto.txt' } , "File '%s' not found", 'toto.txt' ) ;
+		logger.info( 'my-domain' , 'Blah: %s' , 'formated' ) ;
 	} ) ;
 	
 	it( "misc tests" , function( done ) {
@@ -165,7 +182,7 @@ describe( "Logger" , function() {
 		.exec( done ) ;
 	} ) ;
 	
-	it( "Errors" , function() {
+	it( "errors" , function() {
 		
 		var logger = Logger.create() ;
 		var mochaLogger = logger.use( 'mocha' ) ;
@@ -179,7 +196,7 @@ describe( "Logger" , function() {
 		logger.error( null , new Error( 'Something bad happens' ) ) ;
 	} ) ;
 	
-	it( "Variable inspection" , function() {
+	it( "variable inspection" , function() {
 		
 		var logger = Logger.create() ;
 		var mochaLogger = logger.use( 'mocha' ) ;

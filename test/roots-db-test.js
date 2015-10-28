@@ -58,10 +58,10 @@ describe( "Roots DB Transport" , function() {
 		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
 		logger.addTransport( 'rootsDb' , { minLevel: 'trace' , url: 'mongodb://localhost:27017/logger-kit/logs' } ) ;
 		
-		logger.warning( 'gasp' , 'We are running out of storage! Only %iMB left' , 139 ) ;
+		logger.warning( 'storage' , 'gloups' , 'We are running out of storage! Only %iMB left' , 139 ) ;
 		
 		// The last, with callback...
-		logger.info( null , 'Youpla boum!' , done ) ;
+		logger.info( 'idle' , { some: 'meta' , few: 'data' , somethingElse: 4 } , 'Youpla boum!' , done ) ;
 	} ) ;
 	
 } ) ;
