@@ -1,5 +1,5 @@
 {
-  "name": "logger-kit",
+  "name": "logfella",
   "version": "0.1.16",
   "description": "Minimalistic logger",
   "main": "lib/Logger.js",
@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cronvel/logger-kit.git"
+    "url": "https://github.com/cronvel/logfella.git"
   },
   "keywords": [
     "logger"
@@ -29,6 +29,6 @@
   "author": "Cédric Ronvel",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/cronvel/logger-kit/issues"
+    "url": "https://github.com/cronvel/logfella/issues"
   }
 }
