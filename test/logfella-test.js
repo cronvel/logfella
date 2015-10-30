@@ -29,7 +29,7 @@
 
 
 
-var Logger = require( '../lib/Logger.js' ) ;
+var Logfella = require( '../lib/Logfella.js' ) ;
 var async = require( 'async-kit' ) ;
 //var expect = require( 'expect.js' ) ;
 
@@ -41,11 +41,11 @@ var async = require( 'async-kit' ) ;
 
 
 
-describe( "Logger" , function() {
+describe( "Logfella" , function() {
 	
 	it( "single test" , function() {
 		
-		var logger = Logger.create() ;
+		var logger = Logfella.create() ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,
@@ -62,7 +62,7 @@ describe( "Logger" , function() {
 	
 	it( "including a code and meta" , function() {
 		
-		var logger = Logger.create() ;
+		var logger = Logfella.create() ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,
@@ -80,7 +80,7 @@ describe( "Logger" , function() {
 	
 	it( "misc tests" , function( done ) {
 		
-		var logger = Logger.create() ;
+		var logger = Logfella.create() ;
 		var mochaLogger = logger.use( 'mocha' ) ;
 		
 		logger.setGlobalConfig( {
@@ -116,7 +116,7 @@ describe( "Logger" , function() {
 	
 	it( "full setup" , function( done ) {
 		
-		var logger = Logger.create( {
+		var logger = Logfella.create( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain' ,
 			transports: [
@@ -149,7 +149,7 @@ describe( "Logger" , function() {
 	
 	it( "full setup on global" , function( done ) {
 		
-		var logger = Logger.global ;
+		var logger = Logfella.global ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,
@@ -184,7 +184,7 @@ describe( "Logger" , function() {
 	
 	it( "errors" , function() {
 		
-		var logger = Logger.create() ;
+		var logger = Logfella.create() ;
 		var mochaLogger = logger.use( 'mocha' ) ;
 		
 		logger.setGlobalConfig( {
@@ -198,7 +198,7 @@ describe( "Logger" , function() {
 	
 	it( "variable inspection" , function() {
 		
-		var logger = Logger.create() ;
+		var logger = Logfella.create() ;
 		var mochaLogger = logger.use( 'mocha' ) ;
 		
 		logger.setGlobalConfig( {
@@ -212,7 +212,7 @@ describe( "Logger" , function() {
 	
 	it( "format color" , function() {
 		
-		var logger = Logger.create() ;
+		var logger = Logfella.create() ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,

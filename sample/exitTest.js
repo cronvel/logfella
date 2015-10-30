@@ -1,7 +1,7 @@
 
 
 
-var logger = require( '../lib/Logger.js' ).global.use( 'main' ) ;
+var logger = require( '../lib/Logfella.js' ).global.use( 'main' ) ;
 var async = require( 'async-kit' ) ;
 
 

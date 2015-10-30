@@ -29,7 +29,7 @@
 
 
 
-var Logger = require( '../lib/Logger.js' ) ;
+var Logfella = require( '../lib/Logfella.js' ) ;
 var async = require( 'async-kit' ) ;
 //var expect = require( 'expect.js' ) ;
 
@@ -48,7 +48,7 @@ describe( "Roots DB Transport" , function() {
 	
 	it( "simple test" , function( done ) {
 		
-		var logger = Logger.create() ;
+		var logger = Logfella.create() ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,

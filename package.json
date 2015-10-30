@@ -2,7 +2,7 @@
   "name": "logfella",
   "version": "0.1.17",
   "description": "Minimalistic logger",
-  "main": "lib/Logger.js",
+  "main": "lib/Logfella.js",
   "directories": {
     "test": "test"
   },

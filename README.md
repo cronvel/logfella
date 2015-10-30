@@ -1,9 +1,8 @@
 
 
-# Logger Kit
+# Logfella
 
-Minimalistic logger.
+Easy logging!
 Early alpha.
 
-#### This package has moved to [https://www.npmjs.com/package/logfella](https://www.npmjs.com/package/logfella)
 
