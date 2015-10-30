@@ -1,7 +1,7 @@
 {
   "name": "logfella",
   "version": "0.1.18",
-  "description": "Minimalistic logger",
+  "description": "Log everything!",
   "main": "lib/Logfella.js",
   "directories": {
     "test": "test"

@@ -2,7 +2,8 @@
 
 # Logfella
 
-Easy logging!
+Log everything!
+
 Early alpha.
 
 
