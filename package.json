@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "Log everything!",
   "main": "lib/Logfella.js",
   "directories": {
