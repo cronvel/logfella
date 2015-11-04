@@ -56,7 +56,7 @@ describe( "Roots DB Transport" , function() {
 		} ) ;
 		
 		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
-		logger.addTransport( 'rootsDb' , { minLevel: 'trace' , url: 'mongodb://localhost:27017/logger-kit/logs' } ) ;
+		logger.addTransport( 'rootsDb' , { minLevel: 'trace' , url: 'mongodb://localhost:27017/logfella/logs' } ) ;
 		
 		logger.warning( 'storage' , 'gloups' , 'We are running out of storage! Only %iMB left' , 139 ) ;
 		
