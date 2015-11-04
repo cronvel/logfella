@@ -31,7 +31,7 @@
 
 var Logfella = require( '../lib/Logfella.js' ) ;
 var async = require( 'async-kit' ) ;
-//var expect = require( 'expect.js' ) ;
+var expect = require( 'expect.js' ) ;
 
 
 
@@ -225,6 +225,29 @@ describe( "Logfella" , function() {
 		logger.error( null , 'some error %E' , new Error( 'Something bad happens' ) ) ;
 	} ) ;
 	
+	it( "monitoring" , function() {
+		
+		var logger = Logfella.create() ;
+		
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.mon.bob = 123 ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , monitoring: true , output: process.stderr } ) ;
+		
+		logger.warning( null , 'warning!' ) ;
+		logger.error( null , 'some error %E' , new Error( 'Something bad happens' ) ) ;
+		logger.fatal( null , 'some fatal error %E' , new Error( 'Something really bad happens' ) ) ;
+		logger.info( null , { mon: { "+bob": 5 } } , 'This update monitoring' ) ;
+		
+		expect( logger.mon ).to.eql( { warnings: 1 , errors: 2 , bob: 128 } ) ;
+		logger.info( null , 'Monitoring: %I' , logger.mon ) ;
+		
+		logger.monFrame() ;
+	} ) ;
 } ) ;
 
 

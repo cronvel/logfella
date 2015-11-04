@@ -24,55 +24,37 @@
 	SOFTWARE.
 */
 
-/* global describe, it */
-
-
 
 
 var Logfella = require( '../lib/Logfella.js' ) ;
+var log = Logfella.global.use( 'tests' ) ;
+
 var async = require( 'async-kit' ) ;
-//var expect = require( 'expect.js' ) ;
 
 
+var count = 0 ;
 
-
-
-			/* Tests */
-
-
-
-describe( "NetServer Transport" , function() {
-	
-	it( "simple test" , function( done ) {
-		
-		this.timeout( 10000 ) ;
-		
-		var logger = Logfella.create() ;
-		var count = 0 ;
-		
-		logger.setGlobalConfig( {
-			minLevel: 'trace' ,
-			defaultDomain: 'default-domain'
-		} ) ;
-		
-		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
-		logger.addTransport( 'netServer' , { minLevel: 'trace' , listen: 1234 } ) ;
-		
-		logger.logTransports[ 1 ].server.on( 'connection' , function() {
-			
-			count ++ ;
-			
-			if ( count >= 2 )
-			{
-				logger.warning( 'storage' , 'gloups' , 'We are running out of storage! Only %iMB left' , 139 ) ;
-				logger.info( 'idle' , { some: 'meta' , few: 'data' , somethingElse: 4 } , 'Youpla boum!' ) ;
-				
-				setTimeout( done , 30 ) ;
-			}
-		} ) ;
-	} ) ;
-	
+log.setGlobalConfig( {
+	minLevel: 'trace' ,
+	defaultDomain: 'default-domain' ,
+	monPeriod: 1000
 } ) ;
 
+log.installExitHandlers() ;
+
+log.removeAllTransports() ;
+log.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , monitoring: true , listen: 1234 } ) ;
+
+log.monTransports[ 0 ].server.on( 'connection' , function( socket ) {
+	
+	var id = ++ count ;
+	
+	log.info( { mon: { connections: log.monTransports[ 0 ].clients.size } } , 'New client #%i' , id ) ;
+	
+	socket.on( 'close' , function() {
+		log.info( { mon: { connections: log.monTransports[ 0 ].clients.size } } , 'Client #%i disconnected' , id ) ;
+	} ) ;
+} ) ;
 
 

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "async-kit": "^0.6.5",
+    "kung-fig": "^0.3.4",
     "string-kit": "^0.2.9",
     "tree-kit": "^0.5.6"
   },
