@@ -27,9 +27,11 @@
 
 
 var Logfella = require( '../lib/Logfella.js' ) ;
-var log = Logfella.global.use( 'tests' ) ;
-
+var log = Logfella.global ;
 var async = require( 'async-kit' ) ;
+
+var fs = require( 'fs' ) ;
+
 
 
 var count = 0 ;
@@ -44,8 +46,12 @@ log.installExitHandlers() ;
 
 log.removeAllTransports() ;
 log.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
-log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , monitoring: true , listen: 1234 } ) ;
+log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , messageFormatter: 'json' , monitoring: true , listen: 1234 } ) ;
 log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , monitoring: true , listen: './mon.sock' } ) ;
+
+log = log.use( 'tests' ) ;
+
+
 
 log.monTransports[ 0 ].server.on( 'connection' , function( socket ) {
 	
@@ -57,5 +63,12 @@ log.monTransports[ 0 ].server.on( 'connection' , function( socket ) {
 		log.info( { mon: { connections: log.monTransports[ 0 ].clients.size } } , 'Client #%i disconnected' , id ) ;
 	} ) ;
 } ) ;
+
+
+
+process.on( 'exit' , function() {
+	fs.unlinkSync( './mon.sock' ) ;
+} ) ;
+
 
 
