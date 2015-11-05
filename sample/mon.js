@@ -45,6 +45,7 @@ log.installExitHandlers() ;
 log.removeAllTransports() ;
 log.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
 log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , monitoring: true , listen: 1234 } ) ;
+log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , monitoring: true , listen: './mon.sock' } ) ;
 
 log.monTransports[ 0 ].server.on( 'connection' , function( socket ) {
 	
