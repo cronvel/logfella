@@ -60,6 +60,23 @@ describe( "Logfella" , function() {
 		logger.info( 'my-domain' , 'Hello %s!', 'my-domain' ) ;
 	} ) ;
 	
+	it( "color, no-color" , function() {
+		
+		var logger = Logfella.create() ;
+		
+		logger.setGlobalConfig( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , color: false , output: process.stderr , includeIdMeta: true } ) ;
+		logger.addTransport( 'scatteredFiles' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
+		logger.addTransport( 'file' , { minLevel: 'trace' , color: false , path: __dirname + '/log/app.log' } ) ;
+		
+		logger.debug( null , 'Hello ^R%s^:!', 'world' ) ;
+		logger.info( 'my-domain' , 'Hello ^G%s^:!', 'my-domain' ) ;
+	} ) ;
+	
 	it( "including a code and meta" , function() {
 		
 		var logger = Logfella.create() ;
