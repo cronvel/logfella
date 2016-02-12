@@ -56,7 +56,7 @@ describe( "Logfella" , function() {
 		logger.addTransport( 'scatteredFiles' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
 		logger.addTransport( 'file' , { minLevel: 'trace' , color: true , path: __dirname + '/log/app.log' } ) ;
 		
-		logger.debug( null , 'Hello %s!', 'world' ) ;
+		logger.debug( null , 'Hello ^R%s^:!', 'world' ) ;
 		logger.info( 'my-domain' , 'Hello %s!', 'my-domain' ) ;
 	} ) ;
 	
