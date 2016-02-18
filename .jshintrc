@@ -8,6 +8,7 @@
 	"browser" : false,
 	"jquery" : false,
 	
+	"validthis": true,
 	
 	// Security
 	"eqeqeq" : true, // true: Require triple equals (===) for comparison

@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "0.3.23",
+  "version": "0.3.24",
   "engines": {
     "node": ">=4.0.0"
   },
@@ -10,11 +10,11 @@
     "test": "test"
   },
   "dependencies": {
-    "async-kit": "^0.6.8",
+    "async-kit": "^0.6.9",
     "kung-fig": "^0.6.0",
-    "logfella-common-transport": "^0.3.3",
-    "string-kit": "^0.4.1",
-    "tree-kit": "^0.5.7"
+    "logfella-common-transport": "^0.3.4",
+    "string-kit": "^0.4.2",
+    "tree-kit": "^0.5.12"
   },
   "devDependencies": {
     "expect.js": "^0.3.1",
