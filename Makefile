@@ -52,7 +52,7 @@ UGLIFY=./node_modules/.bin/uglifyjs
 
 # Build the browser lib
 browser/Logfella.js: lib/*.js
-	${BROWSERIFY} lib/Logfella.js -s Logfella -u "../../../" -u "../../../package.json" -u kung-fig -o browser/Logfella.js
+	${BROWSERIFY} lib/Logfella.js -s Logfella --ignore-missing -u kung-fig -o browser/Logfella.js
 
 # Build the browser minified lib
 browser/Logfella.min.js: browser/Logfella.js

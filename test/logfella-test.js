@@ -30,6 +30,10 @@
 
 
 
+if ( process.browser ) { return ; }
+
+
+
 var Logfella = require( '../lib/Logfella.js' ) ;
 var async = require( 'async-kit' ) ;
 var expect = require( 'expect.js' ) ;
