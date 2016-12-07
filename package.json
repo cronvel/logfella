@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "0.3.45",
+  "version": "0.3.46",
   "engines": {
     "node": ">=4.0.0"
   },
@@ -13,7 +13,7 @@
     "async-kit": "^2.2.3",
     "browserify": "^13.1.1",
     "jshint": "^2.9.4",
-    "kung-fig": "^0.34.11",
+    "kung-fig": "^0.35.0",
     "logfella-common-transport": "^0.3.4",
     "string-kit": "^0.5.12",
     "tree-kit": "^0.5.26",
