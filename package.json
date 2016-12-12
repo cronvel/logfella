@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "0.3.46",
+  "version": "0.3.47",
   "engines": {
     "node": ">=4.0.0"
   },
@@ -12,7 +12,6 @@
   "dependencies": {
     "async-kit": "^2.2.3",
     "browserify": "^13.1.1",
-    "jshint": "^2.9.4",
     "kung-fig": "^0.35.0",
     "logfella-common-transport": "^0.3.4",
     "string-kit": "^0.5.12",
@@ -22,7 +21,7 @@
   "devDependencies": {
     "browserify": "^13.0.1",
     "expect.js": "^0.3.1",
-    "jshint": "^2.9.2",
+    "jshint": "^2.9.4",
     "mocha": "^3.2.0",
     "uglify-js": "^2.6.4"
   },
