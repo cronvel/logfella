@@ -85,7 +85,7 @@ BrowserConsoleTransport.prototype.transport = function transport( data , cache ,
 
 
 
-},{"logfella-common-transport":18}],2:[function(require,module,exports){
+},{"logfella-common-transport":11}],2:[function(require,module,exports){
 (function (process){
 /*
 	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
@@ -191,7 +191,8 @@ Logfella.create = function create( config )
 	
 	if ( ! process.browser )
 	{
-		self.app = path.basename( process.argv[ 1 ] ) ;
+		// unknown case are produced when running REPL
+		self.app = path.basename( process.argv[ 1 ] || '(unknown)' ) ;
 		self.pid = process.pid ;
 		self.hostname = os.hostname() ;
 	}
@@ -867,7 +868,7 @@ else
 
 
 }).call(this,require('_process'))
-},{"../../../":undefined,"../../../package.json":undefined,"./BrowserConsole.transport.js":1,"./messageFormatter.js":3,"./timeFormatter.js":4,"_process":14,"async-kit":5,"kung-fig":undefined,"logfella-common-transport":18,"os":12,"path":13,"string-kit":28,"util":17}],3:[function(require,module,exports){
+},{"../../../":undefined,"../../../package.json":undefined,"./BrowserConsole.transport.js":1,"./messageFormatter.js":3,"./timeFormatter.js":4,"_process":17,"async-kit":5,"kung-fig":undefined,"logfella-common-transport":11,"os":15,"path":16,"string-kit":29,"util":40}],3:[function(require,module,exports){
 /*
 	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
 
@@ -1161,7 +1162,7 @@ exports.json = function json( data , cache )
 
 
 
-},{"string-kit":28,"tree-kit":36}],4:[function(require,module,exports){
+},{"string-kit":29,"tree-kit":37}],4:[function(require,module,exports){
 /*
 	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
 
@@ -1260,9 +1261,14 @@ module.exports = async ;
 async.wrapper = require( './wrapper.js' ) ;
 async.exit = require( './exit.js' ) ;
 
+var safeTimeout = require( './safeTimeout.js' ) ;
+async.setSafeTimeout = safeTimeout.setSafeTimeout ;
+async.clearSafeTimeout = safeTimeout.clearSafeTimeout ;
 
 
-},{"./core.js":6,"./exit.js":7,"./wrapper.js":8}],6:[function(require,module,exports){
+
+},{"./core.js":6,"./exit.js":7,"./safeTimeout.js":8,"./wrapper.js":9}],6:[function(require,module,exports){
+(function (process,global){
 /*
 	Async Kit
 	
@@ -1337,6 +1343,18 @@ module.exports = async ;
 
 
 
+// Used to store important global variable, like the recursion counter (avoid stack overflow)
+if ( ! global.__ASYNC_KIT__ )
+{
+	global.__ASYNC_KIT__ = {
+		recursionCounter: 0 ,
+		// Fix that to Infinity by default, until this feature is stable enough
+		defaultMaxRecursion: Infinity
+	} ;
+}
+
+
+
 
 
 			//////////////////////////
@@ -1388,10 +1406,12 @@ var planCommonProperties = {
 	returnMapping1to1: { value: false , writable: true , enumerable: true , configurable: true } ,
 	
 	// Not configurable
+	maxRecursion: { value: Infinity , writable: true , enumerable: true } ,
 	jobsData: { value: {} , writable: true , enumerable: true } ,
 	jobsKeys: { value: [] , writable: true , enumerable: true } ,
 	jobsUsing: { value: undefined , writable: true , enumerable: true } ,
 	jobsTimeout: { value: undefined , writable: true , enumerable: true } ,
+	useSafeTimeout: { value: false , writable: true , enumerable: true } ,
 	returnLastJobOnly: { value: false , writable: true , enumerable: true } ,
 	defaultAggregate: { value: undefined , writable: true , enumerable: true } ,
 	returnAggregate: { value: false , writable: true , enumerable: true } ,
@@ -1430,6 +1450,8 @@ async.do = function _do( jobsData )
 		execFinal: { value: execDoFinal.bind( asyncPlan ) }
 	} ) ;
 	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
+	
 	asyncPlan.do( jobsData ) ;
 	
 	return asyncPlan ;
@@ -1451,6 +1473,8 @@ async.parallel = function parallel( jobsData )
 		execFinal: { value: execDoFinal.bind( asyncPlan ) }
 	} ) ;
 	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
+	
 	asyncPlan.do( jobsData ) ;
 	
 	return asyncPlan ;
@@ -1471,6 +1495,8 @@ async.series = function series( jobsData )
 		execLoopCallback: { value: execWhileCallback } ,
 		execFinal: { value: execDoFinal.bind( asyncPlan ) }
 	} ) ;
+	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	
 	asyncPlan.do( jobsData ) ;
 	
@@ -1497,6 +1523,7 @@ async.race = function race( jobsData )
 	
 	// We only want the result of the first succeeding job
 	asyncPlan.returnLastJobOnly = true ;
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	
 	asyncPlan.do( jobsData ) ;
 	
@@ -1523,6 +1550,7 @@ async.waterfall = function waterfall( jobsData )
 	
 	// We only want the result of the first succeeding job
 	asyncPlan.returnLastJobOnly = true ;
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	
 	asyncPlan.do( jobsData ) ;
 	
@@ -1545,6 +1573,8 @@ async.foreach = async.forEach = function foreach( jobsData , iterator )
 		execLoopCallback: { value: execWhileCallback } ,
 		execFinal: { value: execDoFinal.bind( asyncPlan ) }
 	} ) ;
+	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	
 	asyncPlan.do( jobsData ) ;
 	asyncPlan.iterator( iterator ) ;
@@ -1571,6 +1601,8 @@ async.map = function map( jobsData , iterator )
 		execLoopCallback: { value: execWhileCallback } ,
 		execFinal: { value: execDoFinal.bind( asyncPlan ) }
 	} ) ;
+	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	
 	asyncPlan.do( jobsData ) ;
 	asyncPlan.iterator( iterator ) ;
@@ -1611,6 +1643,7 @@ async.reduce = function reduce( jobsData , defaultAggregate , iterator )
 		asyncPlan.execMappingSignature = '( aggregateArg, [finallyCallback] )' ;
 	}
 	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	asyncPlan.transmitAggregate = true ;
 	asyncPlan.returnAggregate = true ;
 	asyncPlan.defaultAggregate = defaultAggregate ;
@@ -1640,6 +1673,8 @@ async.while = function _while( whileAction )
 		execFinal: { value: execDoFinal.bind( asyncPlan ) }
 	} ) ;
 	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
+	
 	asyncPlan.while( whileAction ) ;
 	
 	return asyncPlan ;
@@ -1662,6 +1697,8 @@ async.and = function and( jobsData )
 		execLoopCallback: { value: execWhileCallback } ,
 		execFinal: { value: execLogicFinal.bind( asyncPlan ) }
 	} ) ;
+	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	
 	asyncPlan.do( jobsData ) ;
 	
@@ -1686,6 +1723,8 @@ async.or = function or( jobsData )
 		execFinal: { value: execLogicFinal.bind( asyncPlan ) }
 	} ) ;
 	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
+	
 	asyncPlan.do( jobsData ) ;
 	
 	return asyncPlan ;
@@ -1709,6 +1748,8 @@ async.if = function _if( jobsData )
 		execFinal: { value: execLogicFinal.bind( asyncPlan ) }
 	} ) ;
 	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
+	
 	if ( jobsData ) { asyncPlan.do( jobsData ) ; }
 	
 	return asyncPlan ;
@@ -1729,6 +1770,8 @@ async.if.or = function ifOr( jobsData )
 		execLoopCallback: { value: execWhileCallback } ,
 		execFinal: { value: execLogicFinal.bind( asyncPlan ) }
 	} ) ;
+	
+	asyncPlan.maxRecursion = global.__ASYNC_KIT__.defaultMaxRecursion ;
 	
 	if ( jobsData ) { asyncPlan.do( jobsData ) ; }
 	
@@ -1787,7 +1830,11 @@ async.Plan.prototype.do = function _do( jobsData )
 	else if ( typeof jobsData === 'function' )  { this.jobsData = [ jobsData ] ; this.returnLastJobOnly = true ; }
 	else { this.jobsData = {} ; }
 	
+	// Arrays and Objects are unified, Object.keys() does the job but...
 	this.jobsKeys = Object.keys( this.jobsData ) ;
+	
+	// ... we should avoid troubles with arrays that have enumerable properties
+	if ( Array.isArray( this.jobsData ) ) { this.jobsKeys.length = this.jobsData.length ; }
 	
 	return this ;
 } ;
@@ -1906,6 +1953,14 @@ async.Plan.prototype.timeout = function timeout( jobsTimeout )
 
 
 
+// Set the 'safeTimeout' mode for all internal timeout
+async.Plan.prototype.safeTimeout = function safeTimeout( useSafeTimeout )
+{
+	if ( ! this.locked ) { this.useSafeTimeout = useSafeTimeout === undefined ? true : !! useSafeTimeout ; }
+} ;
+
+
+
 // Set how to retry jobs in error
 async.Plan.prototype.retry = function retry( maxRetry , timeout , multiply , maxTimeout )
 {
@@ -1992,6 +2047,16 @@ async.Plan.prototype.nice = function nice( asyncEventNice )
 	else if ( asyncEventNice === false ) { this.asyncEventNice = -20 ; }
 	else { this.asyncEventNice = asyncEventNice ; }
 	
+	return this ;
+} ;
+
+
+
+// Set the async'ness of the flow, even sync jobs can be turned async
+async.Plan.prototype.setMaxRecursion = function setMaxRecursion( maxRecursion )
+{
+	if ( this.locked ) { return this ; }
+	if ( maxRecursion >= 0 ) { this.maxRecursion = maxRecursion ; }
 	return this ;
 } ;
 
@@ -2530,113 +2595,122 @@ async.ExecContext.prototype.getJobsStatus = function getJobsStatus()
 
 function execDoInit( config , fromExecContext )
 {
-	var i , isArray = Array.isArray( this.jobsData ) ;
+	var i , execContext , isArray = Array.isArray( this.jobsData ) ;
 	
-	// Create instanceof ExecContext
-	var execContext = Object.create( async.ExecContext.prototype , {
-		plan: { value: this } ,
-		aggregate: { value: ( 'aggregate' in config  ? config.aggregate : this.defaultAggregate ) , writable: true , enumerable: true } ,
-		results: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
-		result: { value: undefined , writable: true , enumerable: true } , // Conditionnal version
-		jobsTimeoutTimers: { value: ( isArray ? [] : {} ) , writable: true } ,
-		jobsStatus: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
-		retriesTimers: { value: ( isArray ? [] : {} ) , writable: true } ,
-		retriesCounter: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
-		tryUserResponseCounter: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
-		tryResponseCounter: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
-		iterator: { value: 0 , writable: true , enumerable: true } ,
-		pending: { value: 0 , writable: true , enumerable: true } ,
-		resolved: { value: 0 , writable: true , enumerable: true } ,
-		ok: { value: 0 , writable: true , enumerable: true } ,
-		failed: { value: 0 , writable: true , enumerable: true } ,
-		status: { value: undefined , writable: true , enumerable: true } ,
-		error: { value: undefined , writable: true , enumerable: true } ,
-		statusTriggerJobsKey: { value: undefined , writable: true , enumerable: true } ,
-		whileStatus: { value: undefined , writable: true } ,
-			// true if current execContext has looped in another execContext (one loop per execContext possible)
-			// false if this execContext will never loop, undefined if this isn't settled
-		whileChecked: { value: false , writable: true }
-	} ) ;
-	
-	// Add some properties depending on inherited ExecContext or not
-	if ( ! fromExecContext )
+	if ( fromExecContext && fromExecContext.whileIterator === -1 )
 	{
-		// This is the top-level/first ExecContext
-		Object.defineProperties( execContext , {
-			root: { value: execContext , enumerable: true } ,
-			jobsData: {
-				value: ( isArray ? this.jobsData.slice(0) : treeExtend( null , {} , this.jobsData ) ) ,
-				enumerable: true
-			} ,
-			jobsKeys: { value: this.jobsKeys.slice(0) , enumerable: true } ,
-			execInputs: { value: config.inputs , enumerable: true } ,
-			execCallbacks: { value: config.callbacks } ,
-			whileIterator: { value: 0 , enumerable: true , writable: true }
-		} ) ;
+		// This is a async.while().do() construct, reuse the parent context
+		execContext = fromExecContext ;
+		execContext.whileIterator = 0 ;
 	}
 	else
 	{
-		// This is a loop, and this ExecContext is derived from the first one
-		Object.defineProperties( execContext , {
-			root: { value: fromExecContext.root , enumerable: true } ,
-			jobsData: { value: fromExecContext.jobsData , enumerable: true } ,
-			jobsKeys: { value: fromExecContext.jobsKeys , enumerable: true } ,
-			execInputs: { value: fromExecContext.execInputs , enumerable: true } ,
-			execCallbacks: { value: fromExecContext.execCallbacks } ,
-			whileIterator: { value: fromExecContext.whileIterator + 1 , enumerable: true , writable: true }
+		// Create instanceof ExecContext
+		execContext = Object.create( async.ExecContext.prototype , {
+			plan: { value: this } ,
+			aggregate: { value: ( 'aggregate' in config  ? config.aggregate : this.defaultAggregate ) , writable: true , enumerable: true } ,
+			results: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
+			result: { value: undefined , writable: true , enumerable: true } , // Conditionnal version
+			jobsTimeoutTimers: { value: ( isArray ? [] : {} ) , writable: true } ,
+			jobsStatus: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
+			retriesTimers: { value: ( isArray ? [] : {} ) , writable: true } ,
+			retriesCounter: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
+			tryUserResponseCounter: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
+			tryResponseCounter: { value: ( isArray ? [] : {} ) , writable: true , enumerable: true } ,
+			iterator: { value: 0 , writable: true , enumerable: true } ,
+			pending: { value: 0 , writable: true , enumerable: true } ,
+			resolved: { value: 0 , writable: true , enumerable: true } ,
+			ok: { value: 0 , writable: true , enumerable: true } ,
+			failed: { value: 0 , writable: true , enumerable: true } ,
+			status: { value: undefined , writable: true , enumerable: true } ,
+			error: { value: undefined , writable: true , enumerable: true } ,
+			statusTriggerJobsKey: { value: undefined , writable: true , enumerable: true } ,
+			whileStatus: { value: undefined , writable: true } ,
+				// true if current execContext has looped in another execContext (one loop per execContext possible)
+				// false if this execContext will never loop, undefined if this isn't settled
+			whileChecked: { value: false , writable: true }
 		} ) ;
-	}
-	
-	// Add more properties depending on previous properties
-	Object.defineProperties( execContext , {
-		waiting: { value: execContext.jobsKeys.length , writable: true , enumerable: true }
-	} ) ;
-	
-	// Init the jobsStatus
-	for ( i = 0 ; i < execContext.jobsKeys.length ; i ++ )
-	{
-		execContext.jobsStatus[ execContext.jobsKeys[ i ] ] = {
-			status: 'waiting' ,
-			errors: [] ,
-			tried: 0
-		} ;
-	}
-	
-	// Set up the nice value
-	execContext.setNice( this.asyncEventNice ) ;
-	
-	
-	// Initialize event listeners, only the first time
-	if ( fromExecContext === undefined )
-	{
-		// Register execFinal to the 'resolved' event
-		execContext.root.on( 'resolved' , this.execFinal.bind( this , execContext ) ) ;
 		
-		
-		// Register whileAction to the 'while' event and exec to the 'nextLoop' event
-		// Here, simple callback is mandatory
-		if ( typeof this.whileAction === 'function' )
+		// Add some properties depending on inherited ExecContext or not
+		if ( ! fromExecContext )
 		{
-			execContext.root.on( 'while' , this.whileAction.bind( this ) ) ;
-			execContext.root.on( 'nextLoop' , this.execLoop.bind( this ) ) ;
+			// This is the top-level/first ExecContext
+			Object.defineProperties( execContext , {
+				root: { value: execContext , enumerable: true } ,
+				jobsData: {
+					value: ( isArray ? this.jobsData.slice(0) : treeExtend( null , {} , this.jobsData ) ) ,
+					enumerable: true
+				} ,
+				jobsKeys: { value: this.jobsKeys.slice(0) , enumerable: true } ,
+				execInputs: { value: config.inputs , enumerable: true } ,
+				execCallbacks: { value: config.callbacks } ,
+				whileIterator: { value: 0 , enumerable: true , writable: true }
+			} ) ;
 		}
 		else
 		{
-			this.whileAction = undefined ; // falsy value: do not trigger while code
-			execContext.whileStatus = false ; // settle while status to false
+			// This is a loop, and this ExecContext is derived from the first one
+			Object.defineProperties( execContext , {
+				root: { value: fromExecContext.root , enumerable: true } ,
+				jobsData: { value: fromExecContext.jobsData , enumerable: true } ,
+				jobsKeys: { value: fromExecContext.jobsKeys , enumerable: true } ,
+				execInputs: { value: fromExecContext.execInputs , enumerable: true } ,
+				execCallbacks: { value: fromExecContext.execCallbacks } ,
+				whileIterator: { value: fromExecContext.whileIterator + 1 , enumerable: true , writable: true }
+			} ) ;
 		}
 		
+		// Add more properties depending on previous properties
+		Object.defineProperties( execContext , {
+			waiting: { value: execContext.jobsKeys.length , writable: true , enumerable: true }
+		} ) ;
 		
-		// Register execNext to the next event
-		execContext.root.on( 'next' , this.execNext.bind( this ) ) ;
-		
-		
-		// If we are in a async.while().do() scheme, start whileAction before doing anything
-		if ( this.whileAction && this.whileActionBefore )
+		// Init the jobsStatus
+		for ( i = 0 ; i < execContext.jobsKeys.length ; i ++ )
 		{
-			execContext.whileIterator = -1 ;
-			execContext.root.emit( 'while' , execContext.error , execContext.results , this.execLoopCallback.bind( this , execContext ) , null ) ;
-			return this ;
+			execContext.jobsStatus[ execContext.jobsKeys[ i ] ] = {
+				status: 'waiting' ,
+				errors: [] ,
+				tried: 0
+			} ;
+		}
+		
+		// Set up the nice value
+		execContext.setNice( this.asyncEventNice ) ;
+		
+		
+		// Initialize event listeners, only the first time
+		if ( fromExecContext === undefined )
+		{
+			// Register execFinal to the 'resolved' event
+			execContext.root.on( 'resolved' , this.execFinal.bind( this , execContext ) ) ;
+			
+			
+			// Register whileAction to the 'while' event and exec to the 'nextLoop' event
+			// Here, simple callback is mandatory
+			if ( typeof this.whileAction === 'function' )
+			{
+				execContext.root.on( 'while' , this.whileAction.bind( this ) ) ;
+				execContext.root.on( 'nextLoop' , this.execLoop.bind( this ) ) ;
+			}
+			else
+			{
+				this.whileAction = undefined ; // falsy value: do not trigger while code
+				execContext.whileStatus = false ; // settle while status to false
+			}
+			
+			
+			// Register execNext to the next event
+			execContext.root.on( 'next' , this.execNext.bind( this ) ) ;
+			
+			
+			// If we are in a async.while().do() scheme, start whileAction before doing anything
+			if ( this.whileAction && this.whileActionBefore )
+			{
+				execContext.whileIterator = -1 ;
+				execContext.root.emit( 'while' , execContext.error , execContext.results , this.execLoopCallback.bind( this , execContext ) , null ) ;
+				return this ;
+			}
 		}
 	}
 	
@@ -2672,7 +2746,15 @@ function execDoInit( config , fromExecContext )
 // Iterator/next
 function execDoNext( execContext )
 {
-	var indexOfKey , key , length = execContext.jobsKeys.length , startIndex , endIndex ;
+	// Stack overflow/recursion protection against synchronous jobs
+	if ( global.__ASYNC_KIT__.recursionCounter >= execContext.plan.maxRecursion )
+	{
+		//process.stdout.write( 'Alert: high recursion counter: ' + global.__ASYNC_KIT__.recursionCounter + '\n' ) ;
+		process.nextTick( execDoNext.bind( this , execContext ) ) ;
+		return ;
+	}
+	
+	var self = this , indexOfKey , key , length = execContext.jobsKeys.length , startIndex , endIndex ;
 	
 	startIndex = execContext.iterator ;
 	
@@ -2705,7 +2787,9 @@ function execDoNext( execContext )
 	// Defered execution of jobs
 	for ( indexOfKey = startIndex ; indexOfKey <= endIndex ; indexOfKey ++ )
 	{
+		global.__ASYNC_KIT__.recursionCounter ++ ;
 		this.execJob( execContext , execContext.jobsData[ execContext.jobsKeys[ indexOfKey ] ] , indexOfKey , 0 ) ;
+		global.__ASYNC_KIT__.recursionCounter -- ;
 	}
 }
 
@@ -3178,7 +3262,8 @@ function execLogicFinal( execContext , result )
 
 
 
-},{"nextgen-events":9,"tree-kit/lib/extend.js":32}],7:[function(require,module,exports){
+}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"_process":17,"nextgen-events":12,"tree-kit/lib/extend.js":33}],7:[function(require,module,exports){
 (function (process){
 /*
 	Async Kit
@@ -3268,7 +3353,75 @@ module.exports = exit ;
 
 
 }).call(this,require('_process'))
-},{"./async.js":5,"_process":14}],8:[function(require,module,exports){
+},{"./async.js":5,"_process":17}],8:[function(require,module,exports){
+/*
+	Async Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+/*
+	Safe Timeout.
+	
+	A timeout that ensure a task get the time to perform its action.
+*/
+
+exports.setSafeTimeout = function setSafeTimeout( fn , timeout )
+{
+	var timer = { isSafeTimeout: true } ;
+	
+	timer.timer = setTimeout( function() {
+		timer.timer = setTimeout( function() {
+			timer.timer = setTimeout( function() {
+				timer.timer = setTimeout( fn , 0 ) ;
+			} , timeout / 2 ) ;
+		} , timeout / 2 ) ;
+	} , 0 ) ;
+	
+	return timer ;
+} ;
+
+
+
+exports.clearSafeTimeout = function clearSafeTimeout( timer )
+{
+	if ( timer && typeof timer === 'object' && timer.isSafeTimeout )
+	{
+		clearTimeout( timer.timer ) ;
+	}
+	else
+	{
+		clearTimeout( timer ) ;
+	}
+} ;
+
+
+
+},{}],9:[function(require,module,exports){
 /*
 	Async Kit
 	
@@ -3335,10 +3488,33 @@ wrapper.timeout = function timeout( fn , timeout_ , fnThis )
 
 
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
+/*!
+ * Determine if an object is a Buffer
+ *
+ * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @license  MIT
+ */
+
+// The _isBuffer check is for Safari 5-7 support, because it's missing
+// Object.prototype.constructor. Remove this eventually
+module.exports = function (obj) {
+  return obj != null && (isBuffer(obj) || isSlowBuffer(obj) || !!obj._isBuffer)
+}
+
+function isBuffer (obj) {
+  return !!obj.constructor && typeof obj.constructor.isBuffer === 'function' && obj.constructor.isBuffer(obj)
+}
+
+// For Node v0.10 support. Remove this eventually.
+function isSlowBuffer (obj) {
+  return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
+}
+
+},{}],11:[function(require,module,exports){
 /*
-	The Cedric's Swiss Knife (CSK) - CSK NextGen Events
-	
+	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
+
 	Copyright (c) 2015 Cédric Ronvel 
 	
 	The MIT License (MIT)
@@ -3366,13 +3542,115 @@ wrapper.timeout = function timeout( fn , timeout_ , fnThis )
 
 
 
-// Create the object && export it
+// Empty constructor, it is just there to support instanceof operator
+function CommonTransport() { throw new Error( "[logger] Cannot create a CommonTransport object directly" ) ; }
+module.exports = CommonTransport ;
+
+
+
+CommonTransport.create = function create( logger , config )
+{
+	var transport = Object.create( CommonTransport.prototype ) ;
+	transport.init( logger , config ) ;
+	return transport ;
+} ;
+
+
+
+CommonTransport.prototype.init = function init( logger , config )
+{
+	Object.defineProperties( this , {
+		logger: { value: logger , enumerable: true } ,
+		monitoring: { value: false , writable: true , enumerable: true } ,
+		minLevel: { value: 0 , writable: true , enumerable: true } ,
+		maxLevel: { value: 6 , writable: true , enumerable: true } ,
+		messageFormatter: { value: logger.messageFormatter.text , writable: true , enumerable: true } ,
+		timeFormatter: { value: logger.timeFormatter.dateTime , writable: true , enumerable: true }
+	} ) ;
+	
+	if ( config ) { this.setConfig( config ) ; }
+} ;
+
+
+
+CommonTransport.prototype.setConfig = function setConfig( config )
+{
+	if ( config.monitoring !== undefined ) { this.monitoring = !! config.monitoring ; }
+	
+	if ( config.minLevel !== undefined )
+	{
+		if ( typeof config.minLevel === 'number' ) { this.minLevel = config.minLevel ; }
+		else if ( typeof config.minLevel === 'string' ) { this.minLevel = this.logger.levelHash[ config.minLevel ] ; }
+	}
+	
+	if ( config.maxLevel !== undefined )
+	{
+		if ( typeof config.maxLevel === 'number' ) { this.maxLevel = config.maxLevel ; }
+		else if ( typeof config.maxLevel === 'string' ) { this.maxLevel = this.logger.levelHash[ config.maxLevel ] ; }
+	}
+	
+	if ( config.messageFormatter )
+	{
+		if ( typeof config.messageFormatter === 'function' ) { this.messageFormatter = config.messageFormatter ; }
+		else { this.messageFormatter = this.logger.messageFormatter[ config.messageFormatter ] ; }
+	}
+	
+	if ( config.timeFormatter )
+	{
+		if ( typeof config.timeFormatter === 'function' ) { this.timeFormatter = config.timeFormatter ; }
+		else { this.timeFormatter = this.logger.timeFormatter[ config.timeFormatter ] ; }
+	}
+} ;
+
+
+
+CommonTransport.prototype.transport = function transport( data , cache , callback )
+{
+	callback() ;
+} ;
+
+
+
+CommonTransport.prototype.shutdown = function shutdown() {} ;
+
+
+
+},{}],12:[function(require,module,exports){
+(function (global){
+/*
+	Next Gen Events
+	
+	Copyright (c) 2015 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
 function NextGenEvents() { return Object.create( NextGenEvents.prototype ) ; }
 module.exports = NextGenEvents ;
-
-
-
-
+NextGenEvents.prototype.__prototypeUID__ = 'nextgen-events/NextGenEvents' ;
+NextGenEvents.prototype.__prototypeVersion__ = require( '../package.json' ).version ;
 
 			/* Basic features, more or less compatible with Node.js */
 
@@ -3384,19 +3662,30 @@ NextGenEvents.SYNC = -Infinity ;
 // It has an eventEmitter as 'this' anyway (always called using call()).
 NextGenEvents.init = function init()
 {
-	Object.defineProperty( this , '__ngev' , { value: {
-		nice: NextGenEvents.SYNC ,
-		interruptible: false ,
-		recursion: 0 ,
-		contexts: {} ,
-		events: {
-			// Special events
-			error: [] ,
-			interrupt: [] ,
-			newListener: [] ,
-			removeListener: []
+	Object.defineProperty( this , '__ngev' , {
+		configurable: true ,
+		value: {
+			nice: NextGenEvents.SYNC ,
+			interruptible: false ,
+			recursion: 0 ,
+			contexts: {} ,
+			
+			// States by events
+			states: {} ,
+			
+			// State groups by events
+			stateGroups: {} ,
+			
+			// Listeners by events
+			listeners: {
+				// Special events
+				error: [] ,
+				interrupt: [] ,
+				newListener: [] ,
+				removeListener: []
+			}
 		}
-	} } ) ;
+	} ) ;
 } ;
 
 
@@ -3409,25 +3698,20 @@ NextGenEvents.filterOutCallback = function( what , currentElement ) { return wha
 // .addListener( eventName , [fn] , [options] )
 NextGenEvents.prototype.addListener = function addListener( eventName , fn , options )
 {
-	var listener = {} ;
+	var listener = {} , newListenerListeners ;
 	
 	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
-	if ( ! this.__ngev.events[ eventName ] ) { this.__ngev.events[ eventName ] = [] ; }
+	if ( ! this.__ngev.listeners[ eventName ] ) { this.__ngev.listeners[ eventName ] = [] ; }
 	
 	if ( ! eventName || typeof eventName !== 'string' ) { throw new TypeError( ".addListener(): argument #0 should be a non-empty string" ) ; }
-	
-	if ( typeof fn !== 'function' )
-	{
-		options = fn ;
-		fn = undefined ;
-	}
-	
+	if ( typeof fn !== 'function' ) { options = fn ; fn = undefined ; }
 	if ( ! options || typeof options !== 'object' ) { options = {} ; }
 	
 	listener.fn = fn || options.fn ;
-	listener.id = typeof options.id === 'string' ? options.id : listener.fn ;
+	listener.id = options.id !== undefined ? options.id : listener.fn ;
 	listener.once = !! options.once ;
 	listener.async = !! options.async ;
+	listener.eventObject = !! options.eventObject ;
 	listener.nice = options.nice !== undefined ? Math.floor( options.nice ) : NextGenEvents.SYNC ;
 	listener.context = typeof options.context === 'string' ? options.context : null ;
 	
@@ -3446,43 +3730,49 @@ NextGenEvents.prototype.addListener = function addListener( eventName , fn , opt
 	// So the event's name can be retrieved in the listener itself.
 	listener.event = eventName ;
 	
-	// We should emit 'newListener' first, before adding it to the listeners,
-	// to avoid recursion in the case that eventName === 'newListener'
-	if ( this.__ngev.events.newListener.length )
+	if ( this.__ngev.listeners.newListener.length )
 	{
-		// Return an array, because .addListener() may support multiple event addition at once
+		// Extra care should be taken with the 'newListener' event, we should avoid recursion
+		// in the case that eventName === 'newListener', but inside a 'newListener' listener,
+		// .listenerCount() should report correctly
+		newListenerListeners = this.__ngev.listeners.newListener.slice() ;
+		
+		this.__ngev.listeners[ eventName ].push( listener ) ;
+		
+		// Return an array, because one day, .addListener() may support multiple event addition at once,
 		// e.g.: .addListener( { request: onRequest, close: onClose, error: onError } ) ;
-		this.emit( 'newListener' , [ listener ] ) ;
+		NextGenEvents.emitEvent( {
+			emitter: this ,
+			name: 'newListener' ,
+			args: [ [ listener ] ] ,
+			listeners: newListenerListeners
+		} ) ;
+		
+		if ( this.__ngev.states[ eventName ] ) { NextGenEvents.emitToOneListener( this.__ngev.states[ eventName ] , listener ) ; }
+		
+		return this ;
 	}
 	
-	this.__ngev.events[ eventName ].push( listener ) ;
+	this.__ngev.listeners[ eventName ].push( listener ) ;
+	
+	if ( this.__ngev.states[ eventName ] ) { NextGenEvents.emitToOneListener( this.__ngev.states[ eventName ] , listener ) ; }
 	
 	return this ;
 } ;
-
-
 
 NextGenEvents.prototype.on = NextGenEvents.prototype.addListener ;
 
 
 
 // Shortcut
-NextGenEvents.prototype.once = function once( eventName , options )
+// .once( eventName , [fn] , [options] )
+NextGenEvents.prototype.once = function once( eventName , fn , options )
 {
-	if ( ! eventName || typeof eventName !== 'string' ) { throw new TypeError( ".once(): argument #0 should be a non-empty string" ) ; }
+	if ( fn && typeof fn === 'object' ) { fn.once = true ; }
+	else if ( options && typeof options === 'object' ) { options.once = true ; }
+	else { options = { once: true } ; }
 	
-	if ( typeof options === 'function' )
-	{
-		options = { id: options , fn: options } ;
-	}
-	else if ( ! options || typeof options !== 'object' || typeof options.fn !== 'function' )
-	{
-		throw new TypeError( ".once(): argument #1 should be a function or an object with a 'fn' property which value is a function" ) ;
-	}
-	
-	options.once = true ;
-	
-	return this.addListener( eventName , options ) ;
+	return this.addListener( eventName , fn , options ) ;
 } ;
 
 
@@ -3494,34 +3784,32 @@ NextGenEvents.prototype.removeListener = function removeListener( eventName , id
 	if ( ! eventName || typeof eventName !== 'string' ) { throw new TypeError( ".removeListener(): argument #0 should be a non-empty string" ) ; }
 	
 	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
-	if ( ! this.__ngev.events[ eventName ] ) { this.__ngev.events[ eventName ] = [] ; }
+	if ( ! this.__ngev.listeners[ eventName ] ) { this.__ngev.listeners[ eventName ] = [] ; }
 	
-	length = this.__ngev.events[ eventName ].length ;
+	length = this.__ngev.listeners[ eventName ].length ;
 	
 	// It's probably faster to create a new array of listeners
 	for ( i = 0 ; i < length ; i ++ )
 	{
-		if ( this.__ngev.events[ eventName ][ i ].id === id )
+		if ( this.__ngev.listeners[ eventName ][ i ].id === id )
 		{
-			removedListeners.push( this.__ngev.events[ eventName ][ i ] ) ;
+			removedListeners.push( this.__ngev.listeners[ eventName ][ i ] ) ;
 		}
 		else
 		{
-			newListeners.push( this.__ngev.events[ eventName ][ i ] ) ;
+			newListeners.push( this.__ngev.listeners[ eventName ][ i ] ) ;
 		}
 	}
 	
-	this.__ngev.events[ eventName ] = newListeners ;
+	this.__ngev.listeners[ eventName ] = newListeners ;
 	
-	if ( removedListeners.length && this.__ngev.events.removeListener.length )
+	if ( removedListeners.length && this.__ngev.listeners.removeListener.length )
 	{
 		this.emit( 'removeListener' , removedListeners ) ;
 	}
 	
 	return this ;
 } ;
-
-
 
 NextGenEvents.prototype.off = NextGenEvents.prototype.removeListener ;
 
@@ -3537,14 +3825,14 @@ NextGenEvents.prototype.removeAllListeners = function removeAllListeners( eventN
 	{
 		// Remove all listeners for a particular event
 		
-		if ( ! eventName || typeof eventName !== 'string' ) { throw new TypeError( ".removeAllListener(): argument #0 should be undefined or a non-empty string" ) ; }
+		if ( ! eventName || typeof eventName !== 'string' ) { throw new TypeError( ".removeAllListeners(): argument #0 should be undefined or a non-empty string" ) ; }
 		
-		if ( ! this.__ngev.events[ eventName ] ) { this.__ngev.events[ eventName ] = [] ; }
+		if ( ! this.__ngev.listeners[ eventName ] ) { this.__ngev.listeners[ eventName ] = [] ; }
 		
-		removedListeners = this.__ngev.events[ eventName ] ;
-		this.__ngev.events[ eventName ] = [] ;
+		removedListeners = this.__ngev.listeners[ eventName ] ;
+		this.__ngev.listeners[ eventName ] = [] ;
 		
-		if ( removedListeners.length && this.__ngev.events.removeListener.length )
+		if ( removedListeners.length && this.__ngev.listeners.removeListener.length )
 		{
 			this.emit( 'removeListener' , removedListeners ) ;
 		}
@@ -3553,7 +3841,7 @@ NextGenEvents.prototype.removeAllListeners = function removeAllListeners( eventN
 	{
 		// Remove all listeners for any events
 		// 'removeListener' listeners cannot be triggered: they are already deleted
-		this.__ngev.events = {} ;
+		this.__ngev.listeners = {} ;
 	}
 	
 	return this ;
@@ -3563,7 +3851,7 @@ NextGenEvents.prototype.removeAllListeners = function removeAllListeners( eventN
 
 NextGenEvents.listenerWrapper = function listenerWrapper( listener , event , context )
 {
-	var returnValue , serial ;
+	var returnValue , serial , listenerCallback ;
 	
 	if ( event.interrupt ) { return ; }
 	
@@ -3576,7 +3864,7 @@ NextGenEvents.listenerWrapper = function listenerWrapper( listener , event , con
 			context.ready = ! serial ;
 		}
 		
-		returnValue = listener.fn.apply( undefined , event.args.concat( function( arg ) {
+		listenerCallback = function( arg ) {
 			
 			event.listenersDone ++ ;
 			
@@ -3593,7 +3881,7 @@ NextGenEvents.listenerWrapper = function listenerWrapper( listener , event , con
 				
 				event.emitter.emit( 'interrupt' , event.interrupt ) ;
 			}
-			else if ( event.listenersDone >= event.listeners && event.callback )
+			else if ( event.listenersDone >= event.listeners.length && event.callback )
 			{
 				event.callback( undefined , event ) ;
 				delete event.callback ;
@@ -3602,11 +3890,16 @@ NextGenEvents.listenerWrapper = function listenerWrapper( listener , event , con
 			// Process the queue if serialized
 			if ( serial ) { NextGenEvents.processQueue.call( event.emitter , listener.context , true ) ; }
 			
-		} ) ) ;
+		} ;
+		
+		if ( listener.eventObject ) { listener.fn( event , listenerCallback ) ; }
+		else { returnValue = listener.fn.apply( undefined , event.args.concat( listenerCallback ) ) ; }
 	}
 	else
 	{
-		returnValue = listener.fn.apply( undefined , event.args ) ;
+		if ( listener.eventObject ) { listener.fn( event ) ; }
+		else { returnValue = listener.fn.apply( undefined , event.args ) ; }
+		
 		event.listenersDone ++ ;
 	}
 	
@@ -3624,7 +3917,7 @@ NextGenEvents.listenerWrapper = function listenerWrapper( listener , event , con
 		
 		event.emitter.emit( 'interrupt' , event.interrupt ) ;
 	}
-	else if ( event.listenersDone >= event.listeners && event.callback )
+	else if ( event.listenersDone >= event.listeners.length && event.callback )
 	{
 		event.callback( undefined , event ) ;
 		delete event.callback ;
@@ -3643,23 +3936,9 @@ var nextEventId = 0 ;
 */
 NextGenEvents.prototype.emit = function emit()
 {
-	var i , iMax , count = 0 ,
-		event , listener , context , currentNice ,
-		listeners , removedListeners = [] ;
+	var event ;
 	
-	event = {
-		emitter: this ,
-		id: nextEventId ++ ,
-		name: null ,
-		args: null ,
-		nice: null ,
-		interrupt: null ,
-		listeners: null ,
-		listenersDone: 0 ,
-		callback: null ,
-	} ;
-	
-	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
+	event = { emitter: this } ;
 	
 	// Arguments handling
 	if ( typeof arguments[ 0 ] === 'number' )
@@ -3680,7 +3959,7 @@ NextGenEvents.prototype.emit = function emit()
 	}
 	else
 	{
-		event.nice = this.__ngev.nice ;
+		//event.nice = this.__ngev.nice ;
 		event.name = arguments[ 0 ] ;
 		if ( ! event.name || typeof event.name !== 'string' ) { throw new TypeError( ".emit(): argument #0 should be an number or a non-empty string" ) ; }
 		event.args = Array.prototype.slice.call( arguments , 1 ) ;
@@ -3696,81 +3975,78 @@ NextGenEvents.prototype.emit = function emit()
 		}
 	}
 	
+	return NextGenEvents.emitEvent( event ) ;
+} ;
+
+
+
+/*
+	At this stage, 'event' should be an object having those properties:
+		* emitter: the event emitter
+		* name: the event name
+		* args: array, the arguments of the event
+		* nice: (optional) nice value
+		* callback: (optional) a callback for emit
+		* listeners: (optional) override the listeners array stored in __ngev
+*/
+NextGenEvents.emitEvent = function emitEvent( event )
+{
+	var self = event.emitter ,
+		i , iMax , count = 0 , state , removedListeners ;
 	
-	if ( ! this.__ngev.events[ event.name ] ) { this.__ngev.events[ event.name ] = [] ; }
+	if ( ! self.__ngev ) { NextGenEvents.init.call( self ) ; }
 	
-	// Increment this.__ngev.recursion
-	event.listeners = this.__ngev.events[ event.name ].length ;
-	this.__ngev.recursion ++ ;
+	state = self.__ngev.states[ event.name ] ;
+	
+	// This is a state event, register it now!
+	if ( state !== undefined )
+	{
+		
+		if ( state && event.args.length === state.args.length &&
+			event.args.every( function( arg , index ) { return arg === state.args[ index ] ; } ) )
+		{
+			// The emitter is already in this exact state, skip it now!
+			return ;
+		}
+		
+		// Unset all states of that group
+		self.__ngev.stateGroups[ event.name ].forEach( function( eventName ) {
+			self.__ngev.states[ eventName ] = null ;
+		} ) ;
+		
+		self.__ngev.states[ event.name ] = event ;
+	}
+	
+	if ( ! self.__ngev.listeners[ event.name ] ) { self.__ngev.listeners[ event.name ] = [] ; }
+	
+	event.id = nextEventId ++ ;
+	event.listenersDone = 0 ;
+	event.once = !! event.once ;
+	
+	if ( event.nice === undefined || event.nice === null ) { event.nice = self.__ngev.nice ; }
 	
 	// Trouble arise when a listener is removed from another listener, while we are still in the loop.
 	// So we have to COPY the listener array right now!
-	listeners = this.__ngev.events[ event.name ].slice() ;
+	if ( ! event.listeners ) { event.listeners = self.__ngev.listeners[ event.name ].slice() ; }
 	
-	for ( i = 0 , iMax = listeners.length ; i < iMax ; i ++ )
+	// Increment self.__ngev.recursion
+	self.__ngev.recursion ++ ;
+	removedListeners = [] ;
+	
+	// Emit the event to all listeners!
+	for ( i = 0 , iMax = event.listeners.length ; i < iMax ; i ++ )
 	{
 		count ++ ;
-		listener = listeners[ i ] ;
-		context = listener.context && this.__ngev.contexts[ listener.context ] ;
-		
-		// If the listener context is disabled...
-		if ( context && context.status === NextGenEvents.CONTEXT_DISABLED ) { continue ; }
-		
-		// The nice value for this listener...
-		if ( context ) { currentNice = Math.max( event.nice , listener.nice , context.nice ) ; }
-		else { currentNice = Math.max( event.nice , listener.nice ) ; }
-		
-		
-		if ( listener.once )
-		{
-			// We should remove the current listener RIGHT NOW because of recursive .emit() issues:
-			// one listener may eventually fire this very same event synchronously during the current loop.
-			this.__ngev.events[ event.name ] = this.__ngev.events[ event.name ].filter(
-				NextGenEvents.filterOutCallback.bind( undefined , listener )
-			) ;
-			
-			removedListeners.push( listener ) ;
-		}
-		
-		if ( context && ( context.status === NextGenEvents.CONTEXT_QUEUED || ! context.ready ) )
-		{
-			// Almost all works should be done by .emit(), and little few should be done by .processQueue()
-			context.queue.push( { event: event , listener: listener , nice: currentNice } ) ;
-		}
-		else
-		{
-			try {
-				if ( currentNice < 0 )
-				{
-					if ( this.__ngev.recursion >= - currentNice )
-					{
-						setImmediate( NextGenEvents.listenerWrapper.bind( this , listener , event , context ) ) ;
-					}
-					else
-					{
-						NextGenEvents.listenerWrapper.call( this , listener , event , context ) ;
-					}
-				}
-				else
-				{
-					setTimeout( NextGenEvents.listenerWrapper.bind( this , listener , event , context ) , currentNice ) ;
-				}
-			}
-			catch ( error ) {
-				// Catch error, just to decrement this.__ngev.recursion, re-throw after that...
-				this.__ngev.recursion -- ;
-				throw error ;
-			}
-		}
+		NextGenEvents.emitToOneListener( event , event.listeners[ i ] , removedListeners ) ;
 	}
 	
 	// Decrement recursion
-	this.__ngev.recursion -- ;
+	self.__ngev.recursion -- ;
 	
 	// Emit 'removeListener' after calling listeners
-	if ( removedListeners.length && this.__ngev.events.removeListener.length )
+	if ( removedListeners.length && self.__ngev.listeners.removeListener.length )
 	{
-		this.emit( 'removeListener' , removedListeners ) ;
+		self.emit( 'removeListener' , removedListeners ) ;
 	}
 	
 	
@@ -3779,7 +4055,7 @@ NextGenEvents.prototype.emit = function emit()
 	{
 		if ( event.name === 'error' )
 		{
-			if ( arguments[ 1 ] ) { throw arguments[ 1 ] ; }
+			if ( event.args[ 0 ] ) { throw event.args[ 0 ] ; }
 			else { throw Error( "Uncaught, unspecified 'error' event." ) ; }
 		}
 		
@@ -3795,15 +4071,84 @@ NextGenEvents.prototype.emit = function emit()
 
 
 
+// If removedListeners is not given, then one-time listener emit the 'removeListener' event,
+// if given: that's the caller business to do it
+NextGenEvents.emitToOneListener = function emitToOneListener( event , listener , removedListeners )
+{	
+	var self = event.emitter ,
+		context , currentNice , emitRemoveListener = false ;
+	
+	context = listener.context && self.__ngev.contexts[ listener.context ] ;
+	
+	// If the listener context is disabled...
+	if ( context && context.status === NextGenEvents.CONTEXT_DISABLED ) { return ; }
+	
+	// The nice value for this listener...
+	if ( context ) { currentNice = Math.max( event.nice , listener.nice , context.nice ) ; }
+	else { currentNice = Math.max( event.nice , listener.nice ) ; }
+	
+	
+	if ( listener.once )
+	{
+		// We should remove the current listener RIGHT NOW because of recursive .emit() issues:
+		// one listener may eventually fire this very same event synchronously during the current loop.
+		self.__ngev.listeners[ event.name ] = self.__ngev.listeners[ event.name ].filter(
+			NextGenEvents.filterOutCallback.bind( undefined , listener )
+		) ;
+		
+		if ( removedListeners ) { removedListeners.push( listener ) ; }
+		else { emitRemoveListener = true ; }
+	}
+	
+	if ( context && ( context.status === NextGenEvents.CONTEXT_QUEUED || ! context.ready ) )
+	{
+		// Almost all works should be done by .emit(), and little few should be done by .processQueue()
+		context.queue.push( { event: event , listener: listener , nice: currentNice } ) ;
+	}
+	else
+	{
+		try {
+			if ( currentNice < 0 )
+			{
+				if ( self.__ngev.recursion >= - currentNice )
+				{
+					setImmediate( NextGenEvents.listenerWrapper.bind( self , listener , event , context ) ) ;
+				}
+				else
+				{
+					NextGenEvents.listenerWrapper.call( self , listener , event , context ) ;
+				}
+			}
+			else
+			{
+				setTimeout( NextGenEvents.listenerWrapper.bind( self , listener , event , context ) , currentNice ) ;
+			}
+		}
+		catch ( error ) {
+			// Catch error, just to decrement self.__ngev.recursion, re-throw after that...
+			self.__ngev.recursion -- ;
+			throw error ;
+		}
+	}
+	
+	// Emit 'removeListener' after calling the listener
+	if ( emitRemoveListener && self.__ngev.listeners.removeListener.length )
+	{
+		self.emit( 'removeListener' , [ listener ] ) ;
+	}
+} ;
+
+
+
 NextGenEvents.prototype.listeners = function listeners( eventName )
 {
 	if ( ! eventName || typeof eventName !== 'string' ) { throw new TypeError( ".listeners(): argument #0 should be a non-empty string" ) ; }
 	
 	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
-	if ( ! this.__ngev.events[ eventName ] ) { this.__ngev.events[ eventName ] = [] ; }
+	if ( ! this.__ngev.listeners[ eventName ] ) { this.__ngev.listeners[ eventName ] = [] ; }
 	
 	// Do not return the array, shallow copy it
-	return this.__ngev.events[ eventName ].slice() ;
+	return this.__ngev.listeners[ eventName ].slice() ;
 } ;
 
 
@@ -3821,9 +4166,9 @@ NextGenEvents.prototype.listenerCount = function( eventName )
 	if ( ! eventName || typeof eventName !== 'string' ) { throw new TypeError( ".listenerCount(): argument #1 should be a non-empty string" ) ; }
 	
 	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
-	if ( ! this.__ngev.events[ eventName ] ) { this.__ngev.events[ eventName ] = [] ; }
+	if ( ! this.__ngev.listeners[ eventName ] ) { this.__ngev.listeners[ eventName ] = [] ; }
 	
-	return this.__ngev.events[ eventName ].length ;
+	return this.__ngev.listeners[ eventName ].length ;
 } ;
 
 
@@ -3848,11 +4193,259 @@ NextGenEvents.prototype.setInterruptible = function setInterruptible( value )
 
 
 
+// Make two objects sharing the same event bus
+NextGenEvents.share = function( source , target )
+{
+	if ( ! ( source instanceof NextGenEvents ) || ! ( target instanceof NextGenEvents ) )
+	{
+		throw new TypeError( 'NextGenEvents.share() arguments should be instances of NextGenEvents' ) ;
+	}
+	
+	if ( ! source.__ngev ) { NextGenEvents.init.call( source ) ; }
+	
+	Object.defineProperty( target , '__ngev' , {
+		configurable: true ,
+		value: source.__ngev
+	} ) ;
+} ;
+
+
+
+NextGenEvents.reset = function reset( emitter )
+{
+	Object.defineProperty( emitter , '__ngev' , {
+        configurable: true ,
+        value: null
+	} ) ;
+} ;
+
+
+
 // There is no such thing in NextGenEvents, however, we need to be compatible with node.js events at best
 NextGenEvents.prototype.setMaxListeners = function() {} ;
 
 // Sometime useful as a no-op callback...
 NextGenEvents.noop = function() {} ;
+
+
+
+
+
+			/* Next Gen feature: states! */
+
+
+
+// .defineStates( exclusiveState1 , [exclusiveState2] , [exclusiveState3] , ... )
+NextGenEvents.prototype.defineStates = function defineStates()
+{
+	var self = this ,
+		states = Array.prototype.slice.call( arguments ) ;
+	
+	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
+	
+	states.forEach( function( state ) {
+		self.__ngev.states[ state ] = null ;
+		self.__ngev.stateGroups[ state ] = states ;
+	} ) ;
+} ;
+
+
+
+NextGenEvents.prototype.hasState = function hasState( state )
+{
+	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
+	return !! this.__ngev.states[ state ] ;
+} ;
+
+
+
+NextGenEvents.prototype.getAllStates = function getAllStates()
+{
+	var self = this ;
+	if ( ! this.__ngev ) { NextGenEvents.init.call( this ) ; }
+	return Object.keys( this.__ngev.states ).filter( function( e ) { return self.__ngev.states[ e ] ; } ) ;
+} ;
+
+
+
+
+
+			/* Next Gen feature: groups! */
+
+
+
+NextGenEvents.groupAddListener = function groupAddListener( emitters , eventName , fn , options )
+{
+	// Manage arguments
+	if ( typeof fn !== 'function' ) { options = fn ; fn = undefined ; }
+	if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	fn = fn || options.fn ;
+	delete options.fn ;
+	
+	// Preserve the listener ID, so groupRemoveListener() will work as expected
+	options.id = options.id || fn ;
+	
+	emitters.forEach( function( emitter ) {
+		emitter.addListener( eventName , fn.bind( undefined , emitter ) , options ) ;
+	} ) ;
+} ;
+
+NextGenEvents.groupOn = NextGenEvents.groupAddListener ;
+
+
+
+// Once per emitter
+NextGenEvents.groupOnce = function groupOnce( emitters , eventName , fn , options )
+{
+	if ( fn && typeof fn === 'object' ) { fn.once = true ; }
+	else if ( options && typeof options === 'object' ) { options.once = true ; }
+	else { options = { once: true } ; }
+	
+	return this.groupAddListener( emitters , eventName , fn , options ) ;
+} ;
+
+
+
+// Globally once, only one event could be emitted, by the first emitter to emit
+NextGenEvents.groupGlobalOnce = function groupGlobalOnce( emitters , eventName , fn , options )
+{
+	var fnWrapper , triggered = false ;
+	
+	// Manage arguments
+	if ( typeof fn !== 'function' ) { options = fn ; fn = undefined ; }
+	if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	fn = fn || options.fn ;
+	delete options.fn ;
+	
+	// Preserve the listener ID, so groupRemoveListener() will work as expected
+	options.id = options.id || fn ;
+	
+	fnWrapper = function() {
+		if ( triggered ) { return ; }
+		triggered = true ;
+		NextGenEvents.groupRemoveListener( emitters , eventName , options.id ) ;
+		fn.apply( undefined , arguments ) ;
+	} ;
+	
+	emitters.forEach( function( emitter ) {
+		emitter.once( eventName , fnWrapper.bind( undefined , emitter ) , options ) ;
+	} ) ;
+} ;
+
+
+
+// Globally once, only one event could be emitted, by the last emitter to emit
+NextGenEvents.groupGlobalOnceAll = function groupGlobalOnceAll( emitters , eventName , fn , options )
+{
+	var fnWrapper , triggered = false , count = emitters.length ;
+	
+	// Manage arguments
+	if ( typeof fn !== 'function' ) { options = fn ; fn = undefined ; }
+	if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	fn = fn || options.fn ;
+	delete options.fn ;
+	
+	// Preserve the listener ID, so groupRemoveListener() will work as expected
+	options.id = options.id || fn ;
+	
+	fnWrapper = function() {
+		if ( triggered ) { return ; }
+		if ( -- count ) { return ; }
+		
+		// So this is the last emitter...
+		
+		triggered = true ;
+		// No need to remove listeners: there are already removed anyway
+		//NextGenEvents.groupRemoveListener( emitters , eventName , options.id ) ;
+		fn.apply( undefined , arguments ) ;
+	} ;
+	
+	emitters.forEach( function( emitter ) {
+		emitter.once( eventName , fnWrapper.bind( undefined , emitter ) , options ) ;
+	} ) ;
+} ;
+
+
+
+NextGenEvents.groupRemoveListener = function groupRemoveListener( emitters , eventName , id )
+{
+	emitters.forEach( function( emitter ) {
+		emitter.removeListener( eventName , id ) ;
+	} ) ;
+} ;
+
+NextGenEvents.groupOff = NextGenEvents.groupRemoveListener ;
+
+
+
+NextGenEvents.groupRemoveAllListeners = function groupRemoveAllListeners( emitters , eventName )
+{
+	emitters.forEach( function( emitter ) {
+		emitter.removeAllListeners( eventName ) ;
+	} ) ;
+} ;
+
+
+
+NextGenEvents.groupEmit = function groupEmit( emitters )
+{
+	var eventName , nice , argStart = 2 , argEnd , args , count = emitters.length ,
+		callback , callbackWrapper , callbackTriggered = false ;
+	
+	if ( typeof arguments[ arguments.length - 1 ] === 'function' )
+	{
+		argEnd = -1 ;
+		callback = arguments[ arguments.length - 1 ] ;
+		
+		callbackWrapper = function( interruption ) {
+			if ( callbackTriggered ) { return ; }
+			
+			if ( interruption )
+			{
+				callbackTriggered = true ;
+				callback( interruption ) ;
+			}
+			else if ( ! -- count )
+			{
+				callbackTriggered = true ;
+				callback() ;
+			}
+		} ;
+	}
+	
+	if ( typeof arguments[ 1 ] === 'number' )
+	{
+		argStart = 3 ;
+		nice = typeof arguments[ 1 ] ;
+	}
+	
+	eventName = arguments[ argStart - 1 ] ;
+	args = Array.prototype.slice.call( arguments , argStart , argEnd ) ;
+	
+	emitters.forEach( function( emitter ) {
+		NextGenEvents.emitEvent( {
+			emitter: emitter ,
+			name: eventName ,
+			args: args ,
+			nice: nice ,
+			callback: callbackWrapper
+		} ) ;
+	} ) ;
+} ;
+
+
+
+NextGenEvents.groupDefineStates = function groupDefineStates( emitters )
+{
+	var args = Array.prototype.slice.call( arguments , 1 ) ;
+	
+	emitters.forEach( function( emitter ) {
+		emitter.defineStates.apply( emitter , args ) ;
+	} ) ;
+} ;
 
 
 
@@ -3972,30 +4565,30 @@ NextGenEvents.prototype.destroyListenerContext = function destroyListenerContext
 	
 	// We don't care if a context actually exists, all listeners tied to that contextName will be removed
 	
-	for ( eventName in this.__ngev.events )
+	for ( eventName in this.__ngev.listeners )
 	{
 		newListeners = null ;
-		length = this.__ngev.events[ eventName ].length ;
+		length = this.__ngev.listeners[ eventName ].length ;
 		
 		for ( i = 0 ; i < length ; i ++ )
 		{
-			if ( this.__ngev.events[ eventName ][ i ].context === contextName )
+			if ( this.__ngev.listeners[ eventName ][ i ].context === contextName )
 			{
 				newListeners = [] ;
-				removedListeners.push( this.__ngev.events[ eventName ][ i ] ) ;
+				removedListeners.push( this.__ngev.listeners[ eventName ][ i ] ) ;
 			}
 			else if ( newListeners )
 			{
-				newListeners.push( this.__ngev.events[ eventName ][ i ] ) ;
+				newListeners.push( this.__ngev.listeners[ eventName ][ i ] ) ;
 			}
 		}
 		
-		if ( newListeners ) { this.__ngev.events[ eventName ] = newListeners ; }
+		if ( newListeners ) { this.__ngev.listeners[ eventName ] = newListeners ; }
 	}
 	
 	if ( this.__ngev.contexts[ contextName ] ) { delete this.__ngev.contexts[ contextName ] ; }
 	
-	if ( removedListeners.length && this.__ngev.events.removeListener.length )
+	if ( removedListeners.length && this.__ngev.listeners.removeListener.length )
 	{
 		this.emit( 'removeListener' , removedListeners ) ;
 	}
@@ -4061,52 +4654,750 @@ NextGenEvents.processQueue = function processQueue( contextName , isCompletionCa
 
 
 
+// Backup for the AsyncTryCatch
+NextGenEvents.on = NextGenEvents.prototype.on ;
+NextGenEvents.once = NextGenEvents.prototype.once ;
+NextGenEvents.off = NextGenEvents.prototype.off ;
 
-},{}],10:[function(require,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    ctor.prototype = Object.create(superCtor.prototype, {
-      constructor: {
-        value: ctor,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      }
-    });
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    var TempCtor = function () {}
-    TempCtor.prototype = superCtor.prototype
-    ctor.prototype = new TempCtor()
-    ctor.prototype.constructor = ctor
-  }
+
+
+if ( global.AsyncTryCatch )
+{
+	NextGenEvents.prototype.asyncTryCatchId = global.AsyncTryCatch.NextGenEvents.length ;
+	global.AsyncTryCatch.NextGenEvents.push( NextGenEvents ) ;
+	
+	if ( global.AsyncTryCatch.substituted )
+	{
+		//console.log( 'live subsitute' ) ;
+		global.AsyncTryCatch.substitute() ;
+	}
 }
 
-},{}],11:[function(require,module,exports){
-/**
- * Determine if an object is Buffer
- *
- * Author:   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
- * License:  MIT
- *
- * `npm install is-buffer`
- */
 
-module.exports = function (obj) {
-  return !!(obj != null &&
-    (obj._isBuffer || // For Safari 5-7 (missing Object.prototype.constructor)
-      (obj.constructor &&
-      typeof obj.constructor.isBuffer === 'function' &&
-      obj.constructor.isBuffer(obj))
-    ))
+
+// Load Proxy AT THE END (circular require)
+NextGenEvents.Proxy = require( './Proxy.js' ) ;
+
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"../package.json":14,"./Proxy.js":13}],13:[function(require,module,exports){
+/*
+	Next Gen Events
+	
+	Copyright (c) 2015 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+// Create the object && export it
+function Proxy() { return Proxy.create() ; }
+module.exports = Proxy ;
+
+var NextGenEvents = require( './NextGenEvents.js' ) ;
+var MESSAGE_TYPE = 'NextGenEvents/message' ;
+
+function noop() {}
+
+
+
+Proxy.create = function create()
+{
+	var self = Object.create( Proxy.prototype , {
+		localServices: { value: {} , enumerable: true } ,
+		remoteServices: { value: {} , enumerable: true } ,
+		nextAckId: { value: 1 , writable: true , enumerable: true } ,
+	} ) ;
+	
+	return self ;
+} ;
+
+
+
+// Add a local service accessible remotely
+Proxy.prototype.addLocalService = function addLocalService( id , emitter , options )
+{
+	this.localServices[ id ] = LocalService.create( this , id , emitter , options ) ;
+	return this.localServices[ id ] ;
+} ;
+
+
+
+// Add a remote service accessible locally
+Proxy.prototype.addRemoteService = function addRemoteService( id )
+{
+	this.remoteServices[ id ] = RemoteService.create( this , id ) ;
+	return this.remoteServices[ id ] ;
+} ;
+
+
+
+// Destroy the proxy
+Proxy.prototype.destroy = function destroy()
+{
+	var self = this ;
+	
+	Object.keys( this.localServices ).forEach( function( id ) {
+		self.localServices[ id ].destroy() ;
+		delete self.localServices[ id ] ;
+	} ) ;
+	
+	Object.keys( this.remoteServices ).forEach( function( id ) {
+		self.remoteServices[ id ].destroy() ;
+		delete self.remoteServices[ id ] ;
+	} ) ;
+	
+	this.receive = this.send = noop ;
+} ;
+
+
+
+// Push an event message.
+Proxy.prototype.push = function push( message )
+{
+	if (
+		message.__type !== MESSAGE_TYPE ||
+		! message.service || typeof message.service !== 'string' ||
+		! message.event || typeof message.event !== 'string' ||
+		! message.method
+	)
+	{
+		return ;
+	}
+	
+	switch ( message.method )
+	{
+		// Those methods target a remote service
+		case 'event' :
+			return this.remoteServices[ message.service ] && this.remoteServices[ message.service ].receiveEvent( message ) ;
+		case 'ackEmit' :
+			return this.remoteServices[ message.service ] && this.remoteServices[ message.service ].receiveAckEmit( message ) ;
+			
+		// Those methods target a local service
+		case 'emit' :
+			return this.localServices[ message.service ] && this.localServices[ message.service ].receiveEmit( message ) ;
+		case 'listen' :
+			return this.localServices[ message.service ] && this.localServices[ message.service ].receiveListen( message ) ;
+		case 'ignore' :
+			return this.localServices[ message.service ] && this.localServices[ message.service ].receiveIgnore( message ) ;
+		case 'ackEvent' :
+			return this.localServices[ message.service ] && this.localServices[ message.service ].receiveAckEvent( message ) ;
+			
+		default:
+		 	return ;
+	}
+} ;
+
+
+
+// This is the method to receive and decode data from the other side of the communication channel, most of time another proxy.
+// In most case, this should be overwritten.
+Proxy.prototype.receive = function receive( raw )
+{
+	this.push( raw ) ;
+} ;
+
+
+
+// This is the method used to send data to the other side of the communication channel, most of time another proxy.
+// This MUST be overwritten in any case.
+Proxy.prototype.send = function send()
+{
+	throw new Error( 'The send() method of the Proxy MUST be extended/overwritten' ) ;
+} ;
+
+
+
+			/* Local Service */
+
+
+
+function LocalService( proxy , id , emitter , options ) { return LocalService.create( proxy , id , emitter , options ) ; }
+Proxy.LocalService = LocalService ;
+
+
+
+LocalService.create = function create( proxy , id , emitter , options )
+{
+	var self = Object.create( LocalService.prototype , {
+		proxy: { value: proxy , enumerable: true } ,
+		id: { value: id , enumerable: true } ,
+		emitter: { value: emitter , writable: true , enumerable: true } ,
+		internalEvents: { value: Object.create( NextGenEvents.prototype ) , writable: true , enumerable: true } ,
+		events: { value: {} , enumerable: true } ,
+		canListen: { value: !! options.listen , writable: true , enumerable: true } ,
+		canEmit: { value: !! options.emit , writable: true , enumerable: true } ,
+		canAck: { value: !! options.ack , writable: true , enumerable: true } ,
+		canRpc: { value: !! options.rpc , writable: true , enumerable: true } ,
+		destroyed: { value: false , writable: true , enumerable: true } ,
+	} ) ;
+	
+	return self ;
+} ;
+
+
+
+// Destroy a service
+LocalService.prototype.destroy = function destroy()
+{
+	var self = this ;
+	
+	Object.keys( this.events ).forEach( function( eventName ) {
+		self.emitter.off( eventName , self.events[ eventName ] ) ;
+		delete self.events[ eventName ] ;
+	} ) ;
+	
+	this.emitter = null ;
+	this.destroyed = true ;
+} ;
+
+
+
+// Remote want to emit on the local service
+LocalService.prototype.receiveEmit = function receiveEmit( message )
+{
+	if ( this.destroyed || ! this.canEmit || ( message.ack && ! this.canAck ) ) { return ; }
+	
+	var self = this ;
+	
+	var event = {
+		emitter: this.emitter ,
+		name: message.event ,
+		args: message.args || [] 
+	} ;
+	
+	if ( message.ack )
+	{
+		event.callback = function ack( interruption ) {
+			
+			self.proxy.send( {
+				__type: MESSAGE_TYPE ,
+				service: self.id ,
+				method: 'ackEmit' ,
+				ack: message.ack ,
+				event: message.event ,
+				interruption: interruption
+			} ) ;
+		} ;
+	}
+	
+	NextGenEvents.emitEvent( event ) ;
+} ;
+
+
+
+// Remote want to listen to an event of the local service
+LocalService.prototype.receiveListen = function receiveListen( message )
+{
+	if ( this.destroyed || ! this.canListen || ( message.ack && ! this.canAck ) ) { return ; }
+	
+	if ( message.ack )
+	{
+		if ( this.events[ message.event ] )
+		{
+			if ( this.events[ message.event ].ack ) { return ; }
+			
+			// There is already an event, but not featuring ack, remove that listener now
+			this.emitter.off( message.event , this.events[ message.event ] ) ;
+		}
+		
+		this.events[ message.event ] = LocalService.forwardWithAck.bind( this ) ;
+		this.events[ message.event ].ack = true ;
+		this.emitter.on( message.event , this.events[ message.event ] , { eventObject: true , async: true } ) ;
+	}
+	else
+	{
+		if ( this.events[ message.event ] )
+		{
+			if ( ! this.events[ message.event ].ack ) { return ; }
+			
+			// Remote want to downgrade:
+			// there is already an event, but featuring ack so we remove that listener now
+			this.emitter.off( message.event , this.events[ message.event ] ) ;
+		}
+		
+		this.events[ message.event ] = LocalService.forward.bind( this ) ;
+		this.events[ message.event ].ack = false ;
+		this.emitter.on( message.event , this.events[ message.event ] , { eventObject: true } ) ;
+	}
+} ;
+
+
+
+// Remote do not want to listen to that event of the local service anymore
+LocalService.prototype.receiveIgnore = function receiveIgnore( message )
+{
+	if ( this.destroyed || ! this.canListen ) { return ; }
+	
+	if ( ! this.events[ message.event ] ) { return ; }
+	
+	this.emitter.off( message.event , this.events[ message.event ] ) ;
+	this.events[ message.event ] = null ;
+} ;
+
+
+
+// 
+LocalService.prototype.receiveAckEvent = function receiveAckEvent( message )
+{
+	if (
+		this.destroyed || ! this.canListen || ! this.canAck || ! message.ack ||
+		! this.events[ message.event ] || ! this.events[ message.event ].ack
+	)
+	{
+		return ;
+	}
+	
+	this.internalEvents.emit( 'ack' , message ) ;
+} ;
+
+
+
+// Send an event from the local service to remote
+LocalService.forward = function forward( event )
+{
+	if ( this.destroyed ) { return ; }
+	
+	this.proxy.send( {
+		__type: MESSAGE_TYPE ,
+		service: this.id ,
+		method: 'event' ,
+		event: event.name ,
+		args: event.args
+	} ) ;
+} ;
+
+LocalService.forward.ack = false ;
+
+
+
+// Send an event from the local service to remote, with ACK
+LocalService.forwardWithAck = function forwardWithAck( event , callback )
+{
+	if ( this.destroyed ) { return ; }
+	
+	var self = this ;
+	
+	if ( ! event.callback )
+	{
+		// There is no emit callback, no need to ack this one
+		this.proxy.send( {
+			__type: MESSAGE_TYPE ,
+			service: this.id ,
+			method: 'event' ,
+			event: event.name ,
+			args: event.args
+		} ) ;
+		
+		callback() ;
+		return ;
+	}
+	
+	var triggered = false ;
+	var ackId = this.proxy.nextAckId ++ ;
+	
+	var onAck = function onAck( message ) {
+		if ( triggered || message.ack !== ackId ) { return ; }	// Not our ack...
+		//if ( message.event !== event ) { return ; }	// Do we care?
+		triggered = true ;
+		self.internalEvents.off( 'ack' , onAck ) ;
+		callback() ;
+	} ;
+	
+	this.internalEvents.on( 'ack' , onAck ) ;
+	
+	this.proxy.send( {
+		__type: MESSAGE_TYPE ,
+		service: this.id ,
+		method: 'event' ,
+		event: event.name ,
+		ack: ackId ,
+		args: event.args
+	} ) ;
+} ;
+
+LocalService.forwardWithAck.ack = true ;
+
+
+
+			/* Remote Service */
+
+
+
+function RemoteService( proxy , id ) { return RemoteService.create( proxy , id ) ; }
+//RemoteService.prototype = Object.create( NextGenEvents.prototype ) ;
+//RemoteService.prototype.constructor = RemoteService ;
+Proxy.RemoteService = RemoteService ;
+
+
+
+var EVENT_NO_ACK = 1 ;
+var EVENT_ACK = 2 ;
+
+
+
+RemoteService.create = function create( proxy , id )
+{
+	var self = Object.create( RemoteService.prototype , {
+		proxy: { value: proxy , enumerable: true } ,
+		id: { value: id , enumerable: true } ,
+		// This is the emitter where everything is routed to
+		emitter: { value: Object.create( NextGenEvents.prototype ) , writable: true , enumerable: true } ,
+		internalEvents: { value: Object.create( NextGenEvents.prototype ) , writable: true , enumerable: true } ,
+		events: { value: {} , enumerable: true } ,
+		destroyed: { value: false , writable: true , enumerable: true } ,
+		
+		/*	Useless for instance, unless some kind of service capabilities discovery mechanism exists
+		canListen: { value: !! options.listen , writable: true , enumerable: true } ,
+		canEmit: { value: !! options.emit , writable: true , enumerable: true } ,
+		canAck: { value: !! options.ack , writable: true , enumerable: true } ,
+		canRpc: { value: !! options.rpc , writable: true , enumerable: true } ,
+		*/
+	} ) ;
+	
+	return self ;
+} ;
+
+
+
+// Destroy a service
+RemoteService.prototype.destroy = function destroy()
+{
+	var self = this ;
+	this.emitter.removeAllListeners() ;
+	this.emitter = null ;
+	Object.keys( this.events ).forEach( function( eventName ) { delete self.events[ eventName ] ; } ) ;
+	this.destroyed = true ;
+} ;
+
+
+
+// Local code want to emit to remote service
+RemoteService.prototype.emit = function emit( eventName )
+{
+	if ( this.destroyed ) { return ; }
+	
+	var self = this , args , callback , ackId , triggered ;
+	
+	if ( typeof eventName === 'number' ) { throw new TypeError( 'Cannot emit with a nice value on a remote service' ) ; }
+	
+	if ( typeof arguments[ arguments.length - 1 ] !== 'function' )
+	{
+		args = Array.prototype.slice.call( arguments , 1 ) ;
+		
+		this.proxy.send( {
+			__type: MESSAGE_TYPE ,
+			service: this.id ,
+			method: 'emit' ,
+			event: eventName ,
+			args: args
+		} ) ;
+		
+		return ;
+	}
+	
+	args = Array.prototype.slice.call( arguments , 1 , -1 ) ;
+	callback = arguments[ arguments.length - 1 ] ;
+	ackId = this.proxy.nextAckId ++ ;
+	triggered = false ;
+	
+	var onAck = function onAck( message ) {
+		if ( triggered || message.ack !== ackId ) { return ; }	// Not our ack...
+		//if ( message.event !== event ) { return ; }	// Do we care?
+		triggered = true ;
+		self.internalEvents.off( 'ack' , onAck ) ;
+		callback( message.interruption ) ;
+	} ;
+	
+	this.internalEvents.on( 'ack' , onAck ) ;
+	
+	this.proxy.send( {
+		__type: MESSAGE_TYPE ,
+		service: this.id ,
+		method: 'emit' ,
+		ack: ackId ,
+		event: eventName ,
+		args: args
+	} ) ;
+} ;
+
+
+
+// Local code want to listen to an event of remote service
+RemoteService.prototype.addListener = function addListener( eventName , fn , options )
+{
+	if ( this.destroyed ) { return ; }
+	
+	// Manage arguments the same way NextGenEvents#addListener() does
+	if ( typeof fn !== 'function' ) { options = fn ; fn = undefined ; }
+	if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	options.fn = fn || options.fn ;
+	
+	this.emitter.addListener( eventName , options ) ;
+	
+	// No event was added...
+	if ( ! this.emitter.__ngev.listeners[ eventName ] || ! this.emitter.__ngev.listeners[ eventName ].length ) { return ; }
+	
+	// If the event is successfully listened to and was not remotely listened...
+	if ( options.async && this.events[ eventName ] !== EVENT_ACK )
+	{
+		// We need to listen to or upgrade this event
+		this.events[ eventName ] = EVENT_ACK ;
+		
+		this.proxy.send( {
+			__type: MESSAGE_TYPE ,
+			service: this.id ,
+			method: 'listen' ,
+			ack: true ,
+			event: eventName
+		} ) ;
+	}
+	else if ( ! options.async && ! this.events[ eventName ] )
+	{
+		// We need to listen to this event
+		this.events[ eventName ] = EVENT_NO_ACK ;
+		
+		this.proxy.send( {
+			__type: MESSAGE_TYPE ,
+			service: this.id ,
+			method: 'listen' ,
+			event: eventName
+		} ) ;
+	}
+} ;
+
+RemoteService.prototype.on = RemoteService.prototype.addListener ;
+
+// This is a shortcut to this.addListener()
+RemoteService.prototype.once = NextGenEvents.prototype.once ;
+
+
+
+// Local code want to ignore an event of remote service
+RemoteService.prototype.removeListener = function removeListener( eventName , id )
+{
+	if ( this.destroyed ) { return ; }
+	
+	this.emitter.removeListener( eventName , id ) ;
+	
+	// If no more listener are locally tied to with event and the event was remotely listened...
+	if (
+		( ! this.emitter.__ngev.listeners[ eventName ] || ! this.emitter.__ngev.listeners[ eventName ].length ) &&
+		this.events[ eventName ]
+	)
+	{
+		this.events[ eventName ] = 0 ;
+		
+		this.proxy.send( {
+			__type: MESSAGE_TYPE ,
+			service: this.id ,
+			method: 'ignore' ,
+			event: eventName
+		} ) ;
+	}
+} ;
+
+RemoteService.prototype.off = RemoteService.prototype.removeListener ;
+
+
+
+// A remote service sent an event we are listening to, emit on the service representing the remote
+RemoteService.prototype.receiveEvent = function receiveEvent( message )
+{
+	var self = this ;
+	
+	if ( this.destroyed || ! this.events[ message.event ] ) { return ; }
+	
+	var event = {
+		emitter: this.emitter ,
+		name: message.event ,
+		args: message.args || [] 
+	} ;
+	
+	if ( message.ack )
+	{
+		event.callback = function ack() {
+			
+			self.proxy.send( {
+				__type: MESSAGE_TYPE ,
+				service: self.id ,
+				method: 'ackEvent' ,
+				ack: message.ack ,
+				event: message.event
+			} ) ;
+		} ;
+	}
+	
+	NextGenEvents.emitEvent( event ) ;
+	
+	var eventName = event.name ;
+	
+	// Here we should catch if the event is still listened to ('once' type listeners)
+	//if ( this.events[ eventName ]	) // not needed, already checked at the begining of the function
+	if ( ! this.emitter.__ngev.listeners[ eventName ] || ! this.emitter.__ngev.listeners[ eventName ].length )
+	{
+		this.events[ eventName ] = 0 ;
+		
+		this.proxy.send( {
+			__type: MESSAGE_TYPE ,
+			service: this.id ,
+			method: 'ignore' ,
+			event: eventName
+		} ) ;
+	}
+} ;
+
+
+
+// 
+RemoteService.prototype.receiveAckEmit = function receiveAckEmit( message )
+{
+	if ( this.destroyed || ! message.ack || this.events[ message.event ] !== EVENT_ACK )
+	{
+		return ;
+	}
+	
+	this.internalEvents.emit( 'ack' , message ) ;
+} ;
+
+
+
+},{"./NextGenEvents.js":12}],14:[function(require,module,exports){
+module.exports={
+  "_args": [
+    [
+      {
+        "raw": "nextgen-events@^0.9.0",
+        "scope": null,
+        "escapedName": "nextgen-events",
+        "name": "nextgen-events",
+        "rawSpec": "^0.9.0",
+        "spec": ">=0.9.0 <0.10.0",
+        "type": "range"
+      },
+      "/home/cedric/inside/github/logfella/node_modules/async-kit"
+    ]
+  ],
+  "_from": "nextgen-events@>=0.9.0 <0.10.0",
+  "_id": "nextgen-events@0.9.8",
+  "_inCache": true,
+  "_location": "/nextgen-events",
+  "_nodeVersion": "4.5.0",
+  "_npmOperationalInternal": {
+    "host": "packages-16-east.internal.npmjs.com",
+    "tmp": "tmp/nextgen-events-0.9.8.tgz_1473951316005_0.2686476525850594"
+  },
+  "_npmUser": {
+    "name": "cronvel",
+    "email": "cedric.ronvel@gmail.com"
+  },
+  "_npmVersion": "2.15.9",
+  "_phantomChildren": {},
+  "_requested": {
+    "raw": "nextgen-events@^0.9.0",
+    "scope": null,
+    "escapedName": "nextgen-events",
+    "name": "nextgen-events",
+    "rawSpec": "^0.9.0",
+    "spec": ">=0.9.0 <0.10.0",
+    "type": "range"
+  },
+  "_requiredBy": [
+    "/async-kit"
+  ],
+  "_resolved": "https://registry.npmjs.org/nextgen-events/-/nextgen-events-0.9.8.tgz",
+  "_shasum": "ed1712c2b37dad55407b3e941672d1568c3a4630",
+  "_shrinkwrap": null,
+  "_spec": "nextgen-events@^0.9.0",
+  "_where": "/home/cedric/inside/github/logfella/node_modules/async-kit",
+  "author": {
+    "name": "Cédric Ronvel"
+  },
+  "bugs": {
+    "url": "https://github.com/cronvel/nextgen-events/issues"
+  },
+  "copyright": {
+    "title": "Next-Gen Events",
+    "years": [
+      2015,
+      2016
+    ],
+    "owner": "Cédric Ronvel"
+  },
+  "dependencies": {},
+  "description": "The next generation of events handling for javascript! New: abstract away the network!",
+  "devDependencies": {
+    "browserify": "^13.0.1",
+    "expect.js": "^0.3.1",
+    "jshint": "^2.9.2",
+    "mocha": "^2.5.3",
+    "uglify-js": "^2.6.2",
+    "ws": "^1.1.1"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "dist": {
+    "shasum": "ed1712c2b37dad55407b3e941672d1568c3a4630",
+    "tarball": "https://registry.npmjs.org/nextgen-events/-/nextgen-events-0.9.8.tgz"
+  },
+  "gitHead": "e91559128a1653ed3b58dcadefcac62aa7056207",
+  "homepage": "https://github.com/cronvel/nextgen-events#readme",
+  "keywords": [
+    "events",
+    "async",
+    "emit",
+    "listener",
+    "context",
+    "series",
+    "serialize",
+    "namespace",
+    "proxy",
+    "network"
+  ],
+  "license": "MIT",
+  "main": "lib/NextGenEvents.js",
+  "maintainers": [
+    {
+      "name": "cronvel",
+      "email": "cedric.ronvel@gmail.com"
+    }
+  ],
+  "name": "nextgen-events",
+  "optionalDependencies": {},
+  "readme": "ERROR: No README data found!",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cronvel/nextgen-events.git"
+  },
+  "scripts": {
+    "test": "mocha -R dot"
+  },
+  "version": "0.9.8"
 }
 
-},{}],12:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 exports.endianness = function () { return 'LE' };
 
 exports.hostname = function () {
@@ -4153,7 +5444,7 @@ exports.tmpdir = exports.tmpDir = function () {
 
 exports.EOL = '\n';
 
-},{}],13:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -4381,9 +5672,8 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":14}],14:[function(require,module,exports){
+},{"_process":17}],17:[function(require,module,exports){
 // shim for using process in browser
-
 var process = module.exports = {};
 
 // cached from whatever global is present so that test runners that stub it
@@ -4394,22 +5684,84 @@ var process = module.exports = {};
 var cachedSetTimeout;
 var cachedClearTimeout;
 
+function defaultSetTimout() {
+    throw new Error('setTimeout has not been defined');
+}
+function defaultClearTimeout () {
+    throw new Error('clearTimeout has not been defined');
+}
 (function () {
-  try {
-    cachedSetTimeout = setTimeout;
-  } catch (e) {
-    cachedSetTimeout = function () {
-      throw new Error('setTimeout is not defined');
+    try {
+        if (typeof setTimeout === 'function') {
+            cachedSetTimeout = setTimeout;
+        } else {
+            cachedSetTimeout = defaultSetTimout;
+        }
+    } catch (e) {
+        cachedSetTimeout = defaultSetTimout;
     }
-  }
-  try {
-    cachedClearTimeout = clearTimeout;
-  } catch (e) {
-    cachedClearTimeout = function () {
-      throw new Error('clearTimeout is not defined');
+    try {
+        if (typeof clearTimeout === 'function') {
+            cachedClearTimeout = clearTimeout;
+        } else {
+            cachedClearTimeout = defaultClearTimeout;
+        }
+    } catch (e) {
+        cachedClearTimeout = defaultClearTimeout;
     }
-  }
 } ())
+function runTimeout(fun) {
+    if (cachedSetTimeout === setTimeout) {
+        //normal enviroments in sane situations
+        return setTimeout(fun, 0);
+    }
+    // if setTimeout wasn't available but was latter defined
+    if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
+        cachedSetTimeout = setTimeout;
+        return setTimeout(fun, 0);
+    }
+    try {
+        // when when somebody has screwed with setTimeout but no I.E. maddness
+        return cachedSetTimeout(fun, 0);
+    } catch(e){
+        try {
+            // When we are in I.E. but the script has been evaled so I.E. doesn't trust the global object when called normally
+            return cachedSetTimeout.call(null, fun, 0);
+        } catch(e){
+            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error
+            return cachedSetTimeout.call(this, fun, 0);
+        }
+    }
+
+
+}
+function runClearTimeout(marker) {
+    if (cachedClearTimeout === clearTimeout) {
+        //normal enviroments in sane situations
+        return clearTimeout(marker);
+    }
+    // if clearTimeout wasn't available but was latter defined
+    if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
+        cachedClearTimeout = clearTimeout;
+        return clearTimeout(marker);
+    }
+    try {
+        // when when somebody has screwed with setTimeout but no I.E. maddness
+        return cachedClearTimeout(marker);
+    } catch (e){
+        try {
+            // When we are in I.E. but the script has been evaled so I.E. doesn't  trust the global object when called normally
+            return cachedClearTimeout.call(null, marker);
+        } catch (e){
+            // same as above but when it's a version of I.E. that must have the global object for 'this', hopfully our context correct otherwise it will throw a global error.
+            // Some versions of I.E. have different rules for clearTimeout vs setTimeout
+            return cachedClearTimeout.call(this, marker);
+        }
+    }
+
+
+
+}
 var queue = [];
 var draining = false;
 var currentQueue;
@@ -4434,7 +5786,7 @@ function drainQueue() {
     if (draining) {
         return;
     }
-    var timeout = cachedSetTimeout(cleanUpNextTick);
+    var timeout = runTimeout(cleanUpNextTick);
     draining = true;
 
     var len = queue.length;
@@ -4451,7 +5803,7 @@ function drainQueue() {
     }
     currentQueue = null;
     draining = false;
-    cachedClearTimeout(timeout);
+    runClearTimeout(timeout);
 }
 
 process.nextTick = function (fun) {
@@ -4463,7 +5815,7 @@ process.nextTick = function (fun) {
     }
     queue.push(new Item(fun, args));
     if (queue.length === 1 && !draining) {
-        cachedSetTimeout(drainQueue, 0);
+        runTimeout(drainQueue);
     }
 };
 
@@ -4502,7 +5854,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],15:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/punycode v1.4.1 by @mathias */
 ;(function(root) {
@@ -5039,14 +6391,3329 @@ process.umask = function() { return 0; };
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],16:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+// To solve dependency hell, we do not rely on terminal-kit anymore.
+module.exports = {
+	reset: '\x1b[0m' ,
+	bold: '\x1b[1m' ,
+	dim: '\x1b[2m' ,
+	italic: '\x1b[3m' ,
+	underline: '\x1b[4m' ,
+	inverse: '\x1b[7m' ,
+	
+	defaultColor: '\x1b[39m' ,
+	black: '\x1b[30m' ,
+	red: '\x1b[31m' ,
+	green: '\x1b[32m' ,
+	yellow: '\x1b[33m' ,
+	blue: '\x1b[34m' ,
+	magenta: '\x1b[35m' ,
+	cyan: '\x1b[36m' ,
+	white: '\x1b[37m' ,
+	brightBlack: '\x1b[90m' ,
+	brightRed: '\x1b[91m' ,
+	brightGreen: '\x1b[92m' ,
+	brightYellow: '\x1b[93m' ,
+	brightBlue: '\x1b[94m' ,
+	brightMagenta: '\x1b[95m' ,
+	brightCyan: '\x1b[96m' ,
+	brightWhite: '\x1b[97m' ,
+	
+	defaultBgColor: '\x1b[49m' ,
+	bgBlack: '\x1b[40m' ,
+	bgRed: '\x1b[41m' ,
+	bgGreen: '\x1b[42m' ,
+	bgYellow: '\x1b[43m' ,
+	bgBlue: '\x1b[44m' ,
+	bgMagenta: '\x1b[45m' ,
+	bgCyan: '\x1b[46m' ,
+	bgWhite: '\x1b[47m' ,
+	bgBrightBlack: '\x1b[100m' ,
+	bgBrightRed: '\x1b[101m' ,
+	bgBrightGreen: '\x1b[102m' ,
+	bgBrightYellow: '\x1b[103m' ,
+	bgBrightBlue: '\x1b[104m' ,
+	bgBrightMagenta: '\x1b[105m' ,
+	bgBrightCyan: '\x1b[106m' ,
+	bgBrightWhite: '\x1b[107m' ,
+} ;
+
+
+
+},{}],20:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+var camel = {} ;
+module.exports = camel ;
+
+
+
+// Transform alphanum separated by underscore or minus to camel case
+camel.toCamelCase = function toCamelCase( str )
+{
+	if ( ! str || typeof str !== 'string' ) { return '' ; }
+	
+	return str.replace( /^[\s_-]*([^\s_-]+)|[\s_-]+([^\s_-]?)([^\s_-]*)/g , function( match , firstWord , firstLetter , endOfWord ) {
+		
+		if ( firstWord ) { return firstWord.toLowerCase() ; }
+		if ( ! firstLetter ) { return '' ; }
+		return firstLetter.toUpperCase() + endOfWord.toLowerCase() ;
+	} ) ;
+} ;
+
+
+
+// Transform camel case to alphanum separated by minus
+camel.camelCaseToDashed = function camelCaseToDashed( str )
+{
+	if ( ! str || typeof str !== 'string' ) { return '' ; }
+	
+	return str.replace( /^([A-Z])|([A-Z])/g , function( match , firstLetter , letter ) {
+		
+		if ( firstLetter ) { return firstLetter.toLowerCase() ; }
+		return '-' + letter.toLowerCase() ;
+	} ) ;
+} ;
+
+
+
+},{}],21:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+/*
+	Escape collection.
+*/
+
+
+
+"use strict" ;
+
+
+
+// Load modules
+//var tree = require( 'tree-kit' ) ;
+
+
+
+// From Mozilla Developper Network
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+exports.regExp = exports.regExpPattern = function escapeRegExpPattern( str ) {
+	return str.replace( /([.*+?^${}()|\[\]\/\\])/g , '\\$1' ) ;
+} ;
+
+exports.regExpReplacement = function escapeRegExpReplacement( str ) {
+	return str.replace( /\$/g , '$$$$' ) ;	// This replace any single $ by a double $$
+} ;
+
+
+
+exports.format = function escapeFormat( str ) {
+	return str.replace( /%/g , '%%' ) ;	// This replace any single % by a double %%
+} ;
+
+
+
+exports.jsSingleQuote = function escapeJsSingleQuote( str ) {
+	return exports.control( str ).replace( /'/g , "\\'" ) ;
+} ;
+
+exports.jsDoubleQuote = function escapeJsDoubleQuote( str ) {
+	return exports.control( str ).replace( /"/g , '\\"' ) ;
+} ;
+
+
+
+exports.shellArg = function escapeShellArg( str ) {
+	return '\'' + str.replace( /\'/g , "'\\''" ) + '\'' ;
+} ;
+
+
+
+var escapeControlMap = { '\r': '\\r', '\n': '\\n', '\t': '\\t', '\x7f': '\\x7f' } ;
+
+// Escape \r \n \t so they become readable again, escape all ASCII control character as well, using \x syntaxe
+exports.control = function escapeControl( str ) {
+	return str.replace( /[\x00-\x1f\x7f]/g , function( match ) {
+		if ( escapeControlMap[ match ] !== undefined ) { return escapeControlMap[ match ] ; }
+		var hex = match.charCodeAt( 0 ).toString( 16 ) ;
+		if ( hex.length % 2 ) { hex = '0' + hex ; }
+		return '\\x' + hex ;
+	} ) ;
+} ;
+
+
+
+var escapeHtmlMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' } ;
+
+// Only escape & < > so this is suited for content outside tags
+exports.html = function escapeHtml( str ) {
+	return str.replace( /[&<>]/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
+} ;
+
+// Escape & < > " so this is suited for content inside a double-quoted attribute
+exports.htmlAttr = function escapeHtmlAttr( str ) {
+	return str.replace( /[&<>"]/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
+} ;
+
+// Escape all html special characters & < > " '
+exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
+	return str.replace( /[&<>"']/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
+} ;
+
+
+
+},{}],22:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+/*
+	String formater, inspired by C's sprintf().
+*/
+
+
+
+"use strict" ;
+
+
+
+// Load modules
+//var tree = require( 'tree-kit' ) ;
+var inspect = require( './inspect.js' ).inspect ;
+var inspectError = require( './inspect.js' ).inspectError ;
+var ansi = require( './ansi.js' ) ;
+
+
+
+/*
+	%%		a single %
+	%s		string
+	%f		float
+	%d	%i	integer
+	%u		unsigned integer
+	%U		unsigned positive integer (>0)
+	%h		hexadecimal
+	%x		hexadecimal, force pair of symbols (e.g. 'f' -> '0f')
+	%o		octal
+	%b		binary
+	%I		call string-kit's inspect()
+	%Y		call string-kit's inspect(), but do not inspect non-enumerable
+	%E		call string-kit's inspectError()
+	%J		JSON.stringify()
+	%D		drop
+	%F		filter function existing in the 'this' context, e.g. %[filter:%a%a]F
+	%a		argument for a function
+	
+	Candidate format:
+	%A		for automatic type?
+	%c		for char? (can receive a string or an integer translated into an UTF8 chars)
+	%C		for currency formating?
+	%B		for Buffer objects?
+	%e		for scientific notation?
+*/
+
+exports.formatMethod = function format( str )
+{
+	if ( typeof str !== 'string' )
+	{
+		if ( ! str ) { str = '' ; }
+		else if ( typeof str.toString === 'function' ) { str = str.toString() ; }
+		else { str = '' ; }
+	}
+	
+	var self = this , arg , value ,
+		autoIndex = 1 , args = arguments , length = arguments.length ,
+		hasMarkup = false , shift = null , markupStack = [] ;
+	
+	if ( this.markupReset && this.startingMarkupReset )
+	{
+		str = ( typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ) + str ;
+	}
+	
+	//console.log( 'format args:' , arguments ) ;
+	
+	// /!\ each changes here should be reported on string.format.count() and string.format.hasFormatting() too /!\
+	//str = str.replace( /\^(.?)|%(?:([+-]?)([0-9]*)(?:\/([^\/]*)\/)?([a-zA-Z%])|\[([a-zA-Z0-9_]+)(?::([^\]]*))?\])/g ,
+	str = str.replace( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/g ,
+		function( match , markup , doublePercent , relative , index , modeArg , mode ) {		// jshint ignore:line
+			
+			var replacement , i , n , depth , tmp , fn , fnArgString , argMatches , argList = [] ;
+			
+			//console.log( 'replaceArgs:' , arguments ) ;
+			if ( doublePercent ) { return '%'; }
+			
+			if ( markup )
+			{
+				if ( markup === '^' ) { return '^' ; }
+				
+				if ( self.shiftMarkup && self.shiftMarkup[ markup ] )
+				{
+					shift = self.shiftMarkup[ markup ] ;
+					return '' ;
+				}
+				
+				if ( shift )
+				{
+					if ( ! self.shiftedMarkup || ! self.shiftedMarkup[ shift ] || ! self.shiftedMarkup[ shift ][ markup ] )
+					{
+						return '' ;
+					}
+					
+					hasMarkup = true ;
+					
+					if ( typeof self.shiftedMarkup[ shift ][ markup ] === 'function' )
+					{
+						replacement = self.shiftedMarkup[ shift ][ markup ]( markupStack ) ;
+						// method should manage markup stack themselves
+					}
+					else
+					{
+						replacement = self.shiftedMarkup[ shift ][ markup ] ;
+						markupStack.push( replacement ) ;
+					}
+					
+					shift = null ;
+				}
+				else
+				{
+					if ( ! self.markup || ! self.markup[ markup ] )
+					{
+						return '' ;
+					}
+					
+					hasMarkup = true ;
+					
+					if ( typeof self.markup[ markup ] === 'function' )
+					{
+						replacement = self.markup[ markup ]( markupStack ) ;
+						// method should manage markup stack themselves
+					}
+					else
+					{
+						replacement = self.markup[ markup ] ;
+						markupStack.push( replacement ) ;
+					}
+				}
+				
+				return replacement ;
+			}
+			
+			
+			if ( index )
+			{
+				index = parseInt( index ) ;
+				
+				if ( relative )
+				{
+					if ( relative === '+' ) { index = autoIndex + index ; }
+					else if ( relative === '-' ) { index = autoIndex - index ; }
+				}
+			}
+			else
+			{
+				index = autoIndex ;
+			}
+			
+			autoIndex ++ ;
+			
+			if ( index >= length || index < 1 ) { arg = undefined ; }
+			else { arg = args[ index ] ; }
+			
+			switch ( mode )
+			{
+				case 's' :	// string
+					if ( arg === null || arg === undefined ) { return '' ; }
+					if ( typeof arg === 'string' ) { return arg ; }
+					if ( typeof arg === 'number' ) { return '' + arg ; }
+					if ( typeof arg.toString === 'function' ) { return arg.toString() ; }
+					return '' ;
+				case 'f' :	// float
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+					if ( typeof arg !== 'number' ) { return '0' ; }
+					if ( modeArg !== undefined )
+					{
+						// Use jQuery number format?
+						switch ( modeArg[ 0 ] )
+						{
+							case 'p' :
+								n = parseInt( modeArg.slice( 1 ) , 10 ) ;
+								if ( n >= 1 ) { arg = arg.toPrecision( n ) ; }
+								break ;
+							case 'f' :
+								n = parseInt( modeArg.slice( 1 ) , 10 ) ;
+								arg = arg.toFixed( n ) ;
+								break ;
+						}
+					}
+					return '' + arg ;
+				case 'd' :
+				case 'i' :	// integer decimal
+					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'number' ) { return '' + Math.floor( arg ) ; }
+					return '0' ;
+				case 'u' :	// unsigned decimal
+					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ) ; }
+					return '0' ;
+				case 'U' :	// unsigned positive decimal
+					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 1 ) ; }
+					return '1' ;
+				case 'x' :	// unsigned hexadecimal, force pair of symbole
+					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg !== 'number' ) { return '0' ; }
+					value = '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ;
+					if ( value.length % 2 ) { value = '0' + value ; }
+					return value ;
+				case 'h' :	// unsigned hexadecimal
+					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ; }
+					return '0' ;
+				case 'o' :	// unsigned octal
+					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 8 ) ; }
+					return '0' ;
+				case 'b' :	// unsigned binary
+					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 2 ) ; }
+					return '0' ;
+				case 'I' :
+					depth = 3 ;
+					if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
+					return inspect( { depth: depth , style: ( self && self.color ? 'color' : 'none' ) } , arg ) ;
+				case 'Y' :
+					depth = 3 ;
+					if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
+					return inspect( {
+							depth: depth ,
+							style: ( self && self.color ? 'color' : 'none' ) ,
+							noFunc: true ,
+							enumOnly: true ,
+							noDescriptor: true
+						} ,
+						arg ) ;
+				case 'E' :
+					return inspectError( { style: ( self && self.color ? 'color' : 'none' ) } , arg ) ;
+				case 'J' :
+					return JSON.stringify( arg ) ;
+				case 'D' :
+					return '' ;
+				case 'F' :	// Function
+					
+					autoIndex -- ;	// %F does not eat any arg
+					
+					if ( modeArg === undefined ) { return '' ; }
+					tmp = modeArg.split( ':' ) ;
+					fn = tmp[ 0 ] ;
+					fnArgString = tmp[ 1 ] ;
+					if ( ! fn ) { return '' ; }
+					
+					if ( fnArgString && ( argMatches = fnArgString.match( /%([+-]?)([0-9]*)[a-zA-Z]/g ) ) )
+					{
+						//console.log( argMatches ) ;
+						//console.log( fnArgString ) ;
+						for ( i = 0 ; i < argMatches.length ; i ++ )
+						{
+							relative = argMatches[ i ][ 1 ] ;
+							index = argMatches[ i ][ 2 ] ;
+							
+							if ( index )
+							{
+								index = parseInt( index , 10 ) ;
+								
+								if ( relative )
+								{
+									if ( relative === '+' ) { index = autoIndex + index ; }		// jshint ignore:line
+									else if ( relative === '-' ) { index = autoIndex - index ; }	// jshint ignore:line
+								}
+							}
+							else
+							{
+								index = autoIndex ;
+							}
+							
+							autoIndex ++ ;
+							
+							if ( index >= length || index < 1 ) { argList[ i ] = undefined ; }
+							else { argList[ i ] = args[ index ] ; }
+						}
+					}
+					
+					if ( ! self || ! self.fn || typeof self.fn[ fn ] !== 'function' ) { return '' ; }
+					return self.fn[ fn ].apply( self , argList ) ;
+				
+				default :
+					return '' ;
+			}
+	} ) ;
+	
+	if ( hasMarkup && this.markupReset && this.endingMarkupReset )
+	{
+		str += typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ;
+	}
+	
+	if ( this.extraArguments )
+	{
+		for ( ; autoIndex < length ; autoIndex ++ )
+		{
+			arg = args[ autoIndex ] ;
+			if ( arg === null || arg === undefined ) { continue ; }
+			else if ( typeof arg === 'string' ) { str += arg ; }
+			else if ( typeof arg === 'number' ) { str += arg ; }
+			else if ( typeof arg.toString === 'function' ) { str += arg.toString() ; }
+		}
+	}
+	
+	return str ;
+} ;
+
+
+
+var defaultFormatter = {
+	extraArguments: true ,
+	endingMarkupReset: true ,
+	startingMarkupReset: false ,
+	markupReset: ansi.reset ,
+	shiftMarkup: {
+		'#': 'background'
+	} ,
+	markup: {
+		":": ansi.reset ,
+		" ": ansi.reset + " " ,
+		
+		"-": ansi.dim ,
+		"+": ansi.bold ,
+		"_": ansi.underline ,
+		"/": ansi.italic ,
+		"!": ansi.inverse ,
+		
+		"b": ansi.blue ,
+		"B": ansi.brightBlue ,
+		"c": ansi.cyan ,
+		"C": ansi.brightCyan ,
+		"g": ansi.green ,
+		"G": ansi.brightGreen ,
+		"k": ansi.black ,
+		"K": ansi.brightBlack ,
+		"m": ansi.magenta ,
+		"M": ansi.brightMagenta ,
+		"r": ansi.red ,
+		"R": ansi.brightRed ,
+		"w": ansi.white ,
+		"W": ansi.brightWhite ,
+		"y": ansi.yellow ,
+		"Y": ansi.brightYellow
+	} ,
+	shiftedMarkup: {
+		background: {
+			":": ansi.reset ,
+			" ": ansi.reset + " " ,
+			
+			"b": ansi.bgBlue ,
+			"B": ansi.bgBrightBlue ,
+			"c": ansi.bgCyan ,
+			"C": ansi.bgBrightCyan ,
+			"g": ansi.bgGreen ,
+			"G": ansi.bgBrightGreen ,
+			"k": ansi.bgBlack ,
+			"K": ansi.bgBrightBlack ,
+			"m": ansi.bgMagenta ,
+			"M": ansi.bgBrightMagenta ,
+			"r": ansi.bgRed ,
+			"R": ansi.bgBrightRed ,
+			"w": ansi.bgWhite ,
+			"W": ansi.bgBrightWhite ,
+			"y": ansi.bgYellow ,
+			"Y": ansi.bgBrightYellow
+		}
+	}
+} ;
+
+exports.format = exports.formatMethod.bind( defaultFormatter ) ;
+exports.format.default = defaultFormatter ;
+
+
+
+exports.markupMethod = function markup( str )
+{
+	if ( typeof str !== 'string' )
+	{
+		if ( ! str ) { str = '' ; }
+		else if ( typeof str.toString === 'function' ) { str = str.toString() ; }
+		else { str = '' ; }
+	}
+	
+	var self = this , hasMarkup = false , shift = null , markupStack = [] ;
+	
+	if ( this.markupReset && this.startingMarkupReset )
+	{
+		str = ( typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ) + str ;
+	}
+	
+	//console.log( 'format args:' , arguments ) ;
+	
+	str = str.replace( /\^(.?)/g , function( match , markup ) {
+		var replacement ;
+		
+		if ( markup === '^' ) { return '^' ; }
+		
+		if ( self.shiftMarkup && self.shiftMarkup[ markup ] )
+		{
+			shift = self.shiftMarkup[ markup ] ;
+			return '' ;
+		}
+		
+		if ( shift )
+		{
+			if ( ! self.shiftedMarkup || ! self.shiftedMarkup[ shift ] || ! self.shiftedMarkup[ shift ][ markup ] )
+			{
+				return '' ;
+			}
+			
+			hasMarkup = true ;
+			
+			if ( typeof self.shiftedMarkup[ shift ][ markup ] === 'function' )
+			{
+				replacement = self.shiftedMarkup[ shift ][ markup ]( markupStack ) ;
+				// method should manage markup stack themselves
+			}
+			else
+			{
+				replacement = self.shiftedMarkup[ shift ][ markup ] ;
+				markupStack.push( replacement ) ;
+			}
+			
+			shift = null ;
+		}
+		else
+		{
+			if ( ! self.markup || ! self.markup[ markup ] )
+			{
+				return '' ;
+			}
+			
+			hasMarkup = true ;
+			
+			if ( typeof self.markup[ markup ] === 'function' )
+			{
+				replacement = self.markup[ markup ]( markupStack ) ;
+				// method should manage markup stack themselves
+			}
+			else
+			{
+				replacement = self.markup[ markup ] ;
+				markupStack.push( replacement ) ;
+			}
+		}
+		
+		return replacement ;
+	} ) ;
+	
+	if ( hasMarkup && this.markupReset && this.endingMarkupReset )
+	{
+		str += typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ;
+	}
+	
+	return str ;
+} ;
+
+
+
+exports.markup = exports.markupMethod.bind( defaultFormatter ) ;
+
+
+
+// Count the number of parameters needed for this string
+exports.format.count = function formatCount( str )
+{
+	var match , index , relative , autoIndex = 1 , maxIndex = 0 ;
+	
+	if ( typeof str !== 'string' ) { return 0 ; }
+	
+	// This regex differs slightly from the main regex: we do not count '%%' and %F is excluded
+	var regexp = /%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-EG-Z])/g ;
+	
+	
+	while ( ( match = regexp.exec( str ) ) !== null )
+	{
+		//console.log( match ) ;
+		relative = match[ 1 ] ;
+		index = match[ 2 ] ;
+		
+		if ( index )
+		{
+			index = parseInt( index , 10 ) ;
+			
+			if ( relative )
+			{
+				if ( relative === '+' ) { index = autoIndex + index ; }
+				else if ( relative === '-' ) { index = autoIndex - index ; }
+			}
+		}
+		else
+		{
+			index = autoIndex ;
+		}
+		
+		autoIndex ++ ;
+		
+		if ( maxIndex < index ) { maxIndex = index ; }
+	}
+	
+	return maxIndex ;
+} ;
+
+
+
+// Tell if this string contains formatter chars
+exports.format.hasFormatting = function hasFormatting( str )
+{
+	if ( str.search( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/ ) !== -1 ) { return true ; }
+	else { return false ; }
+} ;
+
+
+
+},{"./ansi.js":19,"./inspect.js":23}],23:[function(require,module,exports){
+(function (Buffer,process){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+/* global Map, Set */
+
+/*
+	Variable inspector.
+*/
+
+
+
+"use strict" ;
+
+
+
+// Load modules
+var treeExtend = require( 'tree-kit/lib/extend.js' ) ;
+var escape = require( './escape.js' ) ;
+var ansi = require( './ansi.js' ) ;
+
+
+
+/*
+	Inspect a variable, return a string ready to be displayed with console.log(), or even as an HTML output.
+	
+	Options:
+		* style:
+			* 'none': (default) normal output suitable for console.log() or writing in a file
+			* 'color': colorful output suitable for terminal
+			* 'html': html output
+		* depth: depth limit, default: 3
+		* noFunc: do not display functions
+		* noDescriptor: do not display descriptor information
+		* noType: do not display type and constructor
+		* enumOnly: only display enumerable properties
+		* funcDetails: display function's details
+		* proto: display object's prototype
+		* sort: sort the keys
+		* minimal: imply noFunc: true, noDescriptor: true, noType: true, enumOnly: true, proto: false and funcDetails: false.
+		  Display a minimal JSON-like output
+		* useInspect? use .inspect() method when available on an object
+*/
+
+function inspect( options , variable )
+{
+	if ( arguments.length < 2 ) { variable = options ; options = {} ; }
+	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	var runtime = { depth: 0 , ancestors: [] } ;
+	
+	if ( ! options.style ) { options.style = inspectStyle.none ; }
+	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
+	
+	if ( options.depth === undefined ) { options.depth = 3 ; }
+	
+	// /!\ nofunc is deprecated
+	if ( options.nofunc ) { options.noFunc = true ; }
+	
+	if ( options.minimal )
+	{
+		options.noFunc = true ;
+		options.noDescriptor = true ;
+		options.noType = true ;
+		options.enumOnly = true ;
+		options.funcDetails = false ;
+		options.proto = false ;
+	}
+	
+	return inspect_( runtime , options , variable ) ;
+}
+
+
+
+function inspect_( runtime , options , variable )
+{
+	var i , funcName , length , propertyList , constructor , keyIsProperty ,
+		type , pre , indent , isArray , isFunc , specialObject ,
+		str = '' , key = '' , descriptorStr = '' , descriptor , nextAncestors ;
+	
+	
+	// Prepare things (indentation, key, descriptor, ... )
+	
+	type = typeof variable ;
+	indent = options.style.tab.repeat( runtime.depth ) ;
+	
+	if ( type === 'function' && options.noFunc ) { return '' ; }
+	
+	if ( runtime.key !== undefined )
+	{
+		if ( runtime.descriptor )
+		{
+			descriptorStr = [] ;
+			
+			if ( ! runtime.descriptor.configurable ) { descriptorStr.push( '-conf' ) ; }
+			if ( ! runtime.descriptor.enumerable ) { descriptorStr.push( '-enum' ) ; }
+			
+			// Already displayed by runtime.forceType
+			//if ( runtime.descriptor.get || runtime.descriptor.set ) { descriptorStr.push( 'getter/setter' ) ; } else
+			if ( ! runtime.descriptor.writable ) { descriptorStr.push( '-w' ) ; }
+			
+			//if ( descriptorStr.length ) { descriptorStr = '(' + descriptorStr.join( ' ' ) + ')' ; }
+			if ( descriptorStr.length ) { descriptorStr = descriptorStr.join( ' ' ) ; }
+			else { descriptorStr = '' ; }
+		}
+		
+		if ( runtime.keyIsProperty )
+		{
+			if ( keyNeedingQuotes( runtime.key ) )
+			{
+				key = '"' + options.style.key( runtime.key ) + '": ' ;
+			}
+			else
+			{
+				key = options.style.key( runtime.key ) + ': ' ;
+			}
+		}
+		else
+		{
+			key = '[' + options.style.index( runtime.key ) + '] ' ;
+		}
+		
+		if ( descriptorStr ) { descriptorStr = ' ' + options.style.type( descriptorStr ) ; }
+	}
+	
+	pre = runtime.noPre ? '' : indent + key ;
+	
+	
+	// Describe the current variable
+	
+	if ( variable === undefined )
+	{
+		str += pre + options.style.constant( 'undefined' ) + descriptorStr + options.style.nl ;
+	}
+	else if ( variable === null )
+	{
+		str += pre + options.style.constant( 'null' ) + descriptorStr + options.style.nl ;
+	}
+	else if ( variable === false )
+	{
+		str += pre + options.style.constant( 'false' ) + descriptorStr + options.style.nl ;
+	}
+	else if ( variable === true )
+	{
+		str += pre + options.style.constant( 'true' ) + descriptorStr + options.style.nl ;
+	}
+	else if ( type === 'number' )
+	{
+		str += pre + options.style.number( variable.toString() ) +
+			( options.noType ? '' : ' ' + options.style.type( 'number' ) ) +
+			descriptorStr + options.style.nl ;
+	}
+	else if ( type === 'string' )
+	{
+		str += pre + '"' + options.style.string( escape.control( variable ) ) + '" ' +
+			( options.noType ? '' : options.style.type( 'string' ) + options.style.length( '(' + variable.length + ')' ) ) +
+			descriptorStr + options.style.nl ;
+	}
+	else if ( Buffer.isBuffer( variable ) )
+	{
+		str += pre + options.style.inspect( variable.inspect() ) + ' ' +
+			( options.noType ? '' : options.style.type( 'Buffer' ) + options.style.length( '(' + variable.length + ')' ) ) +
+			descriptorStr + options.style.nl ;
+	}
+	else if ( type === 'object' || type === 'function' )
+	{
+		funcName = length = '' ;
+		isFunc = false ;
+		if ( type === 'function' )
+		{
+			isFunc = true ;
+			funcName = ' ' + options.style.funcName( ( variable.name ? variable.name : '(anonymous)' ) ) ;
+			length = options.style.length( '(' + variable.length + ')' ) ;
+		}
+		
+		isArray = false ;
+		if ( Array.isArray( variable ) )
+		{
+			isArray = true ;
+			length = options.style.length( '(' + variable.length + ')' ) ;
+		}
+		
+		if ( ! variable.constructor ) { constructor = '(no constructor)' ; }
+		else if ( ! variable.constructor.name ) { constructor = '(anonymous)' ; }
+		else { constructor = variable.constructor.name ; }
+		
+		constructor = options.style.constructorName( constructor ) ;
+		
+		str += pre ;
+		
+		if ( ! options.noType )
+		{
+			if ( runtime.forceType ) { str += options.style.type( runtime.forceType ) ; }
+			else { str += constructor + funcName + length + ' ' + options.style.type( type ) + descriptorStr ; }
+			
+			if ( ! isFunc || options.funcDetails ) { str += ' ' ; }	// if no funcDetails imply no space here
+		}
+		
+		propertyList = Object.getOwnPropertyNames( variable ) ;
+		
+		if ( options.sort ) { propertyList.sort() ; }
+		
+		// Special Objects
+		specialObject = specialObjectSubstitution( variable ) ;
+		
+		if ( specialObject !== undefined )
+		{
+			str += '=> ' + inspect_( {
+					depth: runtime.depth ,
+					ancestors: runtime.ancestors ,
+					noPre: true
+				} ,
+				options ,
+				specialObject
+			) ;
+		}
+		else if ( isFunc && ! options.funcDetails )
+		{
+			str += options.style.nl ;
+		}
+		else if ( ! propertyList.length && ! options.proto )
+		{
+			str += '{}' + options.style.nl ;
+		}
+		else if ( runtime.depth >= options.depth )
+		{
+			str += options.style.limit( '[depth limit]' ) + options.style.nl ;
+		}
+		else if ( runtime.ancestors.indexOf( variable ) !== -1 )
+		{
+			str += options.style.limit( '[circular]' ) + options.style.nl ;
+		}
+		else
+		{
+			str += ( isArray && options.noType ? '[' : '{' ) + options.style.nl ;
+			
+			// Do not use .concat() here, it doesn't works as expected with arrays...
+			nextAncestors = runtime.ancestors.slice() ;
+			nextAncestors.push( variable ) ;
+			
+			for ( i = 0 ; i < propertyList.length ; i ++ )
+			{
+				try {
+					descriptor = Object.getOwnPropertyDescriptor( variable , propertyList[ i ] ) ;
+					
+					if ( ! descriptor.enumerable && options.enumOnly ) { continue ; }
+					
+					keyIsProperty = ! isArray || ! descriptor.enumerable || isNaN( propertyList[ i ] ) ;
+					
+					if ( ! options.noDescriptor && ( descriptor.get || descriptor.set ) )
+					{
+						str += inspect_( {
+								depth: runtime.depth + 1 ,
+								ancestors: nextAncestors ,
+								key: propertyList[ i ] ,
+								keyIsProperty: keyIsProperty ,
+								descriptor: descriptor ,
+								forceType: 'getter/setter'
+							} ,
+							options ,
+							{ get: descriptor.get , set: descriptor.set }
+						) ;
+					}
+					else
+					{
+						str += inspect_( {
+								depth: runtime.depth + 1 ,
+								ancestors: nextAncestors ,
+								key: propertyList[ i ] ,
+								keyIsProperty: keyIsProperty ,
+								descriptor: options.noDescriptor ? undefined : descriptor
+							} ,
+							options ,
+							variable[ propertyList[ i ] ]
+						) ;
+					}
+				}
+				catch ( error ) {
+					str += inspect_( {
+							depth: runtime.depth + 1 ,
+							ancestors: nextAncestors ,
+							key: propertyList[ i ] ,
+							keyIsProperty: keyIsProperty ,
+							descriptor: options.noDescriptor ? undefined : descriptor
+						} ,
+						options ,
+						error
+					) ;
+				}
+			}
+			
+			if ( options.proto )
+			{
+				str += inspect_( {
+						depth: runtime.depth + 1 ,
+						ancestors: nextAncestors ,
+						key: '__proto__' ,
+						keyIsProperty: true
+					} ,
+					options ,
+					variable.__proto__	// jshint ignore:line
+				) ;
+			}
+			
+			str += indent + ( isArray && options.noType ? ']' : '}' ) + options.style.nl ;
+		}
+	}
+	
+	
+	// Finalizing
+	
+	if ( runtime.depth === 0 )
+	{
+		if ( options.style === 'html' ) { str = escape.html( str ) ; }
+	}
+	
+	return str ;
+}
+
+exports.inspect = inspect ;
+
+
+
+function keyNeedingQuotes( key )
+{
+	if ( ! key.length ) { return true ; }
+	return false ;
+}
+
+
+
+// Some special object are better written down when substituted by something else
+function specialObjectSubstitution( variable )
+{
+	switch ( variable.constructor.name )
+	{
+		case 'Date' :
+			if ( variable instanceof Date )
+			{
+				return variable.toString() + ' [' + variable.getTime() + ']' ;
+			}
+			break ;
+		case 'Set' :
+			if ( typeof Set === 'function' && variable instanceof Set )
+			{
+				// This is an ES6 'Set' Object
+				return Array.from( variable ) ;
+			}
+			break ;
+		case 'Map' :
+			if ( typeof Map === 'function' && variable instanceof Map )
+			{
+				// This is an ES6 'Map' Object
+				return Array.from( variable ) ;
+			}
+			break ;
+		case 'ObjectID' :
+			if ( variable._bsontype )
+			{
+				// This is a MongoDB ObjectID, rather boring to display in its original form
+				// due to esoteric characters that confuse both the user and the terminal displaying it.
+				// Substitute it to its string representation
+				return variable.toString() ;
+			}
+			break ;
+	}
+	
+	return ;
+}
+
+
+
+function inspectError( options , error )
+{
+	var str = '' , stack , type , code ;
+	
+	if ( arguments.length < 2 ) { error = options ; options = {} ; }
+	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	if ( ! ( error instanceof Error ) ) { return  ; }
+	
+	if ( ! options.style ) { options.style = inspectStyle.none ; }
+	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
+	
+	if ( error.stack ) { stack = inspectStack( options , error.stack ) ; }
+	
+	type = error.type || error.constructor.name ;
+	code = error.code || error.name || error.errno || error.number ;
+	
+	str += options.style.errorType( type ) +
+		( code ? ' [' + options.style.errorType( code ) + ']' : '' ) + ': ' ;
+	str += options.style.errorMessage( error.message ) + '\n' ;
+	
+	if ( stack ) { str += options.style.errorStack( stack ) + '\n' ; }
+	
+	return str ;
+}
+
+exports.inspectError = inspectError ;
+
+
+
+function inspectStack( options , stack )
+{
+	if ( arguments.length < 2 ) { stack = options ; options = {} ; }
+	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	if ( ! options.style ) { options.style = inspectStyle.none ; }
+	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
+	
+	if ( ! stack ) { return ; }
+	
+	if ( ( options.browser || process.browser ) && stack.indexOf( '@' ) !== -1 )
+	{
+		// Assume a Firefox-compatible stack-trace here...
+		stack = stack
+			.replace( /[<\/]*(?=@)/g , '' )	// Firefox output some WTF </</</</< stuff in its stack trace -- removing that
+			.replace(
+				/^\s*([^@]*)\s*@\s*([^\n]*)(?::([0-9]+):([0-9]+))?$/mg ,
+				function( matches , method , file , line , column ) {	// jshint ignore:line
+					return options.style.errorStack( '    at ' ) +
+						( method ? options.style.errorStackMethod( method ) + ' ' : '' ) +
+						options.style.errorStack( '(' ) +
+						( file ? options.style.errorStackFile( file ) : options.style.errorStack( 'unknown' ) ) +
+						( line ? options.style.errorStack( ':' ) + options.style.errorStackLine( line ) : '' ) +
+						( column ? options.style.errorStack( ':' ) + options.style.errorStackColumn( column ) : '' ) +
+						options.style.errorStack( ')' ) ;
+				}
+			) ;
+	}
+	else
+	{
+		stack = stack.replace( /^[^\n]*\n/ , '' ) ;
+		stack = stack.replace(
+			/^\s*(at)\s+(?:([^\s:\(\)\[\]\n]+(?:\([^\)]+\))?)\s)?(?:\[as ([^\s:\(\)\[\]\n]+)\]\s)?(?:\(?([^:\(\)\[\]\n]+):([0-9]+):([0-9]+)\)?)?$/mg ,
+			function( matches , at , method , as , file , line , column ) {	// jshint ignore:line
+				return options.style.errorStack( '    at ' ) +
+					( method ? options.style.errorStackMethod( method ) + ' ' : '' ) +
+					( as ? options.style.errorStack( '[as ' ) + options.style.errorStackMethodAs( as ) + options.style.errorStack( '] ' ) : '' ) +
+					options.style.errorStack( '(' ) +
+					( file ? options.style.errorStackFile( file ) : options.style.errorStack( 'unknown' ) ) +
+					( line ? options.style.errorStack( ':' ) + options.style.errorStackLine( line ) : '' ) +
+					( column ? options.style.errorStack( ':' ) + options.style.errorStackColumn( column ) : '' ) +
+					options.style.errorStack( ')' ) ;
+			}
+		) ;
+	}
+	
+	return stack ;
+}
+
+exports.inspectStack = inspectStack ;
+
+
+
+// Inspect's styles
+
+var inspectStyle = {} ;
+
+var inspectStyleNoop = function( str ) { return str ; } ;
+
+
+
+inspectStyle.none = {
+	tab: '    ' ,
+	nl: '\n' ,
+	limit: inspectStyleNoop ,
+	type: function( str ) { return '<' + str + '>' ; } ,
+	constant: inspectStyleNoop ,
+	funcName: inspectStyleNoop ,
+	constructorName: function( str ) { return '<' + str + '>' ; } ,
+	length: inspectStyleNoop ,
+	key: inspectStyleNoop ,
+	index: inspectStyleNoop ,
+	number: inspectStyleNoop ,
+	inspect: inspectStyleNoop ,
+	string: inspectStyleNoop ,
+	errorType: inspectStyleNoop ,
+	errorMessage: inspectStyleNoop ,
+	errorStack: inspectStyleNoop ,
+	errorStackMethod: inspectStyleNoop ,
+	errorStackMethodAs: inspectStyleNoop ,
+	errorStackFile: inspectStyleNoop ,
+	errorStackLine: inspectStyleNoop ,
+	errorStackColumn: inspectStyleNoop
+} ;
+
+
+
+inspectStyle.color = treeExtend( null , {} , inspectStyle.none , {
+	limit: function( str ) { return ansi.bold + ansi.brightRed + str + ansi.reset ; } ,
+	type: function( str ) { return ansi.italic + ansi.brightBlack + str + ansi.reset ; } ,
+	constant: function( str ) { return ansi.cyan + str + ansi.reset ; } ,
+	funcName: function( str ) { return ansi.italic + ansi.magenta + str + ansi.reset ; } ,
+	constructorName: function( str ) { return ansi.magenta + str + ansi.reset ; } ,
+	length: function( str ) { return ansi.italic + ansi.brightBlack + str + ansi.reset ; } ,
+	key: function( str ) { return ansi.green + str + ansi.reset ; } ,
+	index: function( str ) { return ansi.blue + str + ansi.reset ; } ,
+	number: function( str ) { return ansi.cyan + str + ansi.reset ; } ,
+	inspect: function( str ) { return ansi.cyan + str + ansi.reset ; } ,
+	string: function( str ) { return ansi.blue + str + ansi.reset ; } ,
+	errorType: function( str ) { return ansi.red + ansi.bold + str + ansi.reset ; } ,
+	errorMessage: function( str ) { return ansi.red + ansi.italic + str + ansi.reset ; } ,
+	errorStack: function( str ) { return ansi.brightBlack + str + ansi.reset ; } ,
+	errorStackMethod: function( str ) { return ansi.brightYellow + str + ansi.reset ; } ,
+	errorStackMethodAs: function( str ) { return ansi.yellow + str + ansi.reset ; } ,
+	errorStackFile: function( str ) { return ansi.brightCyan + str + ansi.reset ; } ,
+	errorStackLine: function( str ) { return ansi.blue + str + ansi.reset ; } ,
+	errorStackColumn: function( str ) { return ansi.magenta + str + ansi.reset ; }
+} ) ;
+
+
+
+inspectStyle.html = treeExtend( null , {} , inspectStyle.none , {
+	tab: '&nbsp;&nbsp;&nbsp;&nbsp;' ,
+	nl: '<br />' ,
+	limit: function( str ) { return '<span style="color:red">' + str + '</span>' ; } ,
+	type: function( str ) { return '<i style="color:gray">' + str + '</i>' ; } ,
+	constant: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
+	funcName: function( str ) { return '<i style="color:magenta">' + str + '</i>' ; } ,
+	constructorName: function( str ) { return '<span style="color:magenta">' + str + '</span>' ; } ,
+	length: function( str ) { return '<i style="color:gray">' + str + '</i>' ; } ,
+	key: function( str ) { return '<span style="color:green">' + str + '</span>' ; } ,
+	index: function( str ) { return '<span style="color:blue">' + str + '</span>' ; } ,
+	number: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
+	inspect: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
+	string: function( str ) { return '<span style="color:blue">' + str + '</span>' ; } ,
+	errorType: function( str ) { return '<span style="color:red">' + str + '</span>' ; } ,
+	errorMessage: function( str ) { return '<span style="color:red">' + str + '</span>' ; } ,
+	errorStack: function( str ) { return '<span style="color:gray">' + str + '</span>' ; } ,
+	errorStackMethod: function( str ) { return '<span style="color:yellow">' + str + '</span>' ; } ,
+	errorStackMethodAs: function( str ) { return '<span style="color:yellow">' + str + '</span>' ; } ,
+	errorStackFile: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
+	errorStackLine: function( str ) { return '<span style="color:blue">' + str + '</span>' ; } ,
+	errorStackColumn: function( str ) { return '<span style="color:gray">' + str + '</span>' ; }
+} ) ;
+
+
+
+}).call(this,{"isBuffer":require("../../is-buffer/index.js")},require('_process'))
+},{"../../is-buffer/index.js":10,"./ansi.js":19,"./escape.js":21,"_process":17,"tree-kit/lib/extend.js":33}],24:[function(require,module,exports){
+module.exports={"߀":"0","́":""," ":" ","Ⓐ":"A","Ａ":"A","À":"A","Á":"A","Â":"A","Ầ":"A","Ấ":"A","Ẫ":"A","Ẩ":"A","Ã":"A","Ā":"A","Ă":"A","Ằ":"A","Ắ":"A","Ẵ":"A","Ẳ":"A","Ȧ":"A","Ǡ":"A","Ä":"A","Ǟ":"A","Ả":"A","Å":"A","Ǻ":"A","Ǎ":"A","Ȁ":"A","Ȃ":"A","Ạ":"A","Ậ":"A","Ặ":"A","Ḁ":"A","Ą":"A","Ⱥ":"A","Ɐ":"A","Ꜳ":"AA","Æ":"AE","Ǽ":"AE","Ǣ":"AE","Ꜵ":"AO","Ꜷ":"AU","Ꜹ":"AV","Ꜻ":"AV","Ꜽ":"AY","Ⓑ":"B","Ｂ":"B","Ḃ":"B","Ḅ":"B","Ḇ":"B","Ƀ":"B","Ɓ":"B","ｃ":"C","Ⓒ":"C","Ｃ":"C","Ꜿ":"C","Ḉ":"C","Ç":"C","Ⓓ":"D","Ｄ":"D","Ḋ":"D","Ď":"D","Ḍ":"D","Ḑ":"D","Ḓ":"D","Ḏ":"D","Đ":"D","Ɗ":"D","Ɖ":"D","ᴅ":"D","Ꝺ":"D","Ð":"Dh","Ǳ":"DZ","Ǆ":"DZ","ǲ":"Dz","ǅ":"Dz","ɛ":"E","Ⓔ":"E","Ｅ":"E","È":"E","É":"E","Ê":"E","Ề":"E","Ế":"E","Ễ":"E","Ể":"E","Ẽ":"E","Ē":"E","Ḕ":"E","Ḗ":"E","Ĕ":"E","Ė":"E","Ë":"E","Ẻ":"E","Ě":"E","Ȅ":"E","Ȇ":"E","Ẹ":"E","Ệ":"E","Ȩ":"E","Ḝ":"E","Ę":"E","Ḙ":"E","Ḛ":"E","Ɛ":"E","Ǝ":"E","ᴇ":"E","ꝼ":"F","Ⓕ":"F","Ｆ":"F","Ḟ":"F","Ƒ":"F","Ꝼ":"F","Ⓖ":"G","Ｇ":"G","Ǵ":"G","Ĝ":"G","Ḡ":"G","Ğ":"G","Ġ":"G","Ǧ":"G","Ģ":"G","Ǥ":"G","Ɠ":"G","Ꞡ":"G","Ᵹ":"G","Ꝿ":"G","ɢ":"G","Ⓗ":"H","Ｈ":"H","Ĥ":"H","Ḣ":"H","Ḧ":"H","Ȟ":"H","Ḥ":"H","Ḩ":"H","Ḫ":"H","Ħ":"H","Ⱨ":"H","Ⱶ":"H","Ɥ":"H","Ⓘ":"I","Ｉ":"I","Ì":"I","Í":"I","Î":"I","Ĩ":"I","Ī":"I","Ĭ":"I","İ":"I","Ï":"I","Ḯ":"I","Ỉ":"I","Ǐ":"I","Ȉ":"I","Ȋ":"I","Ị":"I","Į":"I","Ḭ":"I","Ɨ":"I","Ⓙ":"J","Ｊ":"J","Ĵ":"J","Ɉ":"J","ȷ":"J","Ⓚ":"K","Ｋ":"K","Ḱ":"K","Ǩ":"K","Ḳ":"K","Ķ":"K","Ḵ":"K","Ƙ":"K","Ⱪ":"K","Ꝁ":"K","Ꝃ":"K","Ꝅ":"K","Ꞣ":"K","Ⓛ":"L","Ｌ":"L","Ŀ":"L","Ĺ":"L","Ľ":"L","Ḷ":"L","Ḹ":"L","Ļ":"L","Ḽ":"L","Ḻ":"L","Ł":"L","Ƚ":"L","Ɫ":"L","Ⱡ":"L","Ꝉ":"L","Ꝇ":"L","Ꞁ":"L","Ǉ":"LJ","ǈ":"Lj","Ⓜ":"M","Ｍ":"M","Ḿ":"M","Ṁ":"M","Ṃ":"M","Ɱ":"M","Ɯ":"M","ϻ":"M","Ꞥ":"N","Ƞ":"N","Ⓝ":"N","Ｎ":"N","Ǹ":"N","Ń":"N","Ñ":"N","Ṅ":"N","Ň":"N","Ṇ":"N","Ņ":"N","Ṋ":"N","Ṉ":"N","Ɲ":"N","Ꞑ":"N","ᴎ":"N","Ǌ":"NJ","ǋ":"Nj","Ⓞ":"O","Ｏ":"O","Ò":"O","Ó":"O","Ô":"O","Ồ":"O","Ố":"O","Ỗ":"O","Ổ":"O","Õ":"O","Ṍ":"O","Ȭ":"O","Ṏ":"O","Ō":"O","Ṑ":"O","Ṓ":"O","Ŏ":"O","Ȯ":"O","Ȱ":"O","Ö":"O","Ȫ":"O","Ỏ":"O","Ő":"O","Ǒ":"O","Ȍ":"O","Ȏ":"O","Ơ":"O","Ờ":"O","Ớ":"O","Ỡ":"O","Ở":"O","Ợ":"O","Ọ":"O","Ộ":"O","Ǫ":"O","Ǭ":"O","Ø":"O","Ǿ":"O","Ɔ":"O","Ɵ":"O","Ꝋ":"O","Ꝍ":"O","Œ":"OE","Ƣ":"OI","Ꝏ":"OO","Ȣ":"OU","Ⓟ":"P","Ｐ":"P","Ṕ":"P","Ṗ":"P","Ƥ":"P","Ᵽ":"P","Ꝑ":"P","Ꝓ":"P","Ꝕ":"P","Ⓠ":"Q","Ｑ":"Q","Ꝗ":"Q","Ꝙ":"Q","Ɋ":"Q","Ⓡ":"R","Ｒ":"R","Ŕ":"R","Ṙ":"R","Ř":"R","Ȑ":"R","Ȓ":"R","Ṛ":"R","Ṝ":"R","Ŗ":"R","Ṟ":"R","Ɍ":"R","Ɽ":"R","Ꝛ":"R","Ꞧ":"R","Ꞃ":"R","Ⓢ":"S","Ｓ":"S","ẞ":"S","Ś":"S","Ṥ":"S","Ŝ":"S","Ṡ":"S","Š":"S","Ṧ":"S","Ṣ":"S","Ṩ":"S","Ș":"S","Ş":"S","Ȿ":"S","Ꞩ":"S","Ꞅ":"S","Ⓣ":"T","Ｔ":"T","Ṫ":"T","Ť":"T","Ṭ":"T","Ț":"T","Ţ":"T","Ṱ":"T","Ṯ":"T","Ŧ":"T","Ƭ":"T","Ʈ":"T","Ⱦ":"T","Ꞇ":"T","Þ":"Th","Ꜩ":"TZ","Ⓤ":"U","Ｕ":"U","Ù":"U","Ú":"U","Û":"U","Ũ":"U","Ṹ":"U","Ū":"U","Ṻ":"U","Ŭ":"U","Ü":"U","Ǜ":"U","Ǘ":"U","Ǖ":"U","Ǚ":"U","Ủ":"U","Ů":"U","Ű":"U","Ǔ":"U","Ȕ":"U","Ȗ":"U","Ư":"U","Ừ":"U","Ứ":"U","Ữ":"U","Ử":"U","Ự":"U","Ụ":"U","Ṳ":"U","Ų":"U","Ṷ":"U","Ṵ":"U","Ʉ":"U","Ⓥ":"V","Ｖ":"V","Ṽ":"V","Ṿ":"V","Ʋ":"V","Ꝟ":"V","Ʌ":"V","Ꝡ":"VY","Ⓦ":"W","Ｗ":"W","Ẁ":"W","Ẃ":"W","Ŵ":"W","Ẇ":"W","Ẅ":"W","Ẉ":"W","Ⱳ":"W","Ⓧ":"X","Ｘ":"X","Ẋ":"X","Ẍ":"X","Ⓨ":"Y","Ｙ":"Y","Ỳ":"Y","Ý":"Y","Ŷ":"Y","Ỹ":"Y","Ȳ":"Y","Ẏ":"Y","Ÿ":"Y","Ỷ":"Y","Ỵ":"Y","Ƴ":"Y","Ɏ":"Y","Ỿ":"Y","Ⓩ":"Z","Ｚ":"Z","Ź":"Z","Ẑ":"Z","Ż":"Z","Ž":"Z","Ẓ":"Z","Ẕ":"Z","Ƶ":"Z","Ȥ":"Z","Ɀ":"Z","Ⱬ":"Z","Ꝣ":"Z","ⓐ":"a","ａ":"a","ẚ":"a","à":"a","á":"a","â":"a","ầ":"a","ấ":"a","ẫ":"a","ẩ":"a","ã":"a","ā":"a","ă":"a","ằ":"a","ắ":"a","ẵ":"a","ẳ":"a","ȧ":"a","ǡ":"a","ä":"a","ǟ":"a","ả":"a","å":"a","ǻ":"a","ǎ":"a","ȁ":"a","ȃ":"a","ạ":"a","ậ":"a","ặ":"a","ḁ":"a","ą":"a","ⱥ":"a","ɐ":"a","ɑ":"a","ꜳ":"aa","æ":"ae","ǽ":"ae","ǣ":"ae","ꜵ":"ao","ꜷ":"au","ꜹ":"av","ꜻ":"av","ꜽ":"ay","ⓑ":"b","ｂ":"b","ḃ":"b","ḅ":"b","ḇ":"b","ƀ":"b","ƃ":"b","ɓ":"b","Ƃ":"b","ⓒ":"c","ć":"c","ĉ":"c","ċ":"c","č":"c","ç":"c","ḉ":"c","ƈ":"c","ȼ":"c","ꜿ":"c","ↄ":"c","C":"c","Ć":"c","Ĉ":"c","Ċ":"c","Č":"c","Ƈ":"c","Ȼ":"c","ⓓ":"d","ｄ":"d","ḋ":"d","ď":"d","ḍ":"d","ḑ":"d","ḓ":"d","ḏ":"d","đ":"d","ƌ":"d","ɖ":"d","ɗ":"d","Ƌ":"d","Ꮷ":"d","ԁ":"d","Ɦ":"d","ð":"dh","ǳ":"dz","ǆ":"dz","ⓔ":"e","ｅ":"e","è":"e","é":"e","ê":"e","ề":"e","ế":"e","ễ":"e","ể":"e","ẽ":"e","ē":"e","ḕ":"e","ḗ":"e","ĕ":"e","ė":"e","ë":"e","ẻ":"e","ě":"e","ȅ":"e","ȇ":"e","ẹ":"e","ệ":"e","ȩ":"e","ḝ":"e","ę":"e","ḙ":"e","ḛ":"e","ɇ":"e","ǝ":"e","ⓕ":"f","ｆ":"f","ḟ":"f","ƒ":"f","ﬀ":"ff","ﬁ":"fi","ﬂ":"fl","ﬃ":"ffi","ﬄ":"ffl","ⓖ":"g","ｇ":"g","ǵ":"g","ĝ":"g","ḡ":"g","ğ":"g","ġ":"g","ǧ":"g","ģ":"g","ǥ":"g","ɠ":"g","ꞡ":"g","ꝿ":"g","ᵹ":"g","ⓗ":"h","ｈ":"h","ĥ":"h","ḣ":"h","ḧ":"h","ȟ":"h","ḥ":"h","ḩ":"h","ḫ":"h","ẖ":"h","ħ":"h","ⱨ":"h","ⱶ":"h","ɥ":"h","ƕ":"hv","ⓘ":"i","ｉ":"i","ì":"i","í":"i","î":"i","ĩ":"i","ī":"i","ĭ":"i","ï":"i","ḯ":"i","ỉ":"i","ǐ":"i","ȉ":"i","ȋ":"i","ị":"i","į":"i","ḭ":"i","ɨ":"i","ı":"i","ⓙ":"j","ｊ":"j","ĵ":"j","ǰ":"j","ɉ":"j","ⓚ":"k","ｋ":"k","ḱ":"k","ǩ":"k","ḳ":"k","ķ":"k","ḵ":"k","ƙ":"k","ⱪ":"k","ꝁ":"k","ꝃ":"k","ꝅ":"k","ꞣ":"k","ⓛ":"l","ｌ":"l","ŀ":"l","ĺ":"l","ľ":"l","ḷ":"l","ḹ":"l","ļ":"l","ḽ":"l","ḻ":"l","ſ":"l","ł":"l","ƚ":"l","ɫ":"l","ⱡ":"l","ꝉ":"l","ꞁ":"l","ꝇ":"l","ɭ":"l","ǉ":"lj","ⓜ":"m","ｍ":"m","ḿ":"m","ṁ":"m","ṃ":"m","ɱ":"m","ɯ":"m","ⓝ":"n","ｎ":"n","ǹ":"n","ń":"n","ñ":"n","ṅ":"n","ň":"n","ṇ":"n","ņ":"n","ṋ":"n","ṉ":"n","ƞ":"n","ɲ":"n","ŉ":"n","ꞑ":"n","ꞥ":"n","ԉ":"n","ǌ":"nj","ⓞ":"o","ｏ":"o","ò":"o","ó":"o","ô":"o","ồ":"o","ố":"o","ỗ":"o","ổ":"o","õ":"o","ṍ":"o","ȭ":"o","ṏ":"o","ō":"o","ṑ":"o","ṓ":"o","ŏ":"o","ȯ":"o","ȱ":"o","ö":"o","ȫ":"o","ỏ":"o","ő":"o","ǒ":"o","ȍ":"o","ȏ":"o","ơ":"o","ờ":"o","ớ":"o","ỡ":"o","ở":"o","ợ":"o","ọ":"o","ộ":"o","ǫ":"o","ǭ":"o","ø":"o","ǿ":"o","ꝋ":"o","ꝍ":"o","ɵ":"o","ɔ":"o","ᴑ":"o","œ":"oe","ƣ":"oi","ꝏ":"oo","ȣ":"ou","ⓟ":"p","ｐ":"p","ṕ":"p","ṗ":"p","ƥ":"p","ᵽ":"p","ꝑ":"p","ꝓ":"p","ꝕ":"p","ρ":"p","ⓠ":"q","ｑ":"q","ɋ":"q","ꝗ":"q","ꝙ":"q","ⓡ":"r","ｒ":"r","ŕ":"r","ṙ":"r","ř":"r","ȑ":"r","ȓ":"r","ṛ":"r","ṝ":"r","ŗ":"r","ṟ":"r","ɍ":"r","ɽ":"r","ꝛ":"r","ꞧ":"r","ꞃ":"r","ⓢ":"s","ｓ":"s","ś":"s","ṥ":"s","ŝ":"s","ṡ":"s","š":"s","ṧ":"s","ṣ":"s","ṩ":"s","ș":"s","ş":"s","ȿ":"s","ꞩ":"s","ꞅ":"s","ẛ":"s","ʂ":"s","ß":"ss","ⓣ":"t","ｔ":"t","ṫ":"t","ẗ":"t","ť":"t","ṭ":"t","ț":"t","ţ":"t","ṱ":"t","ṯ":"t","ŧ":"t","ƭ":"t","ʈ":"t","ⱦ":"t","ꞇ":"t","þ":"th","ꜩ":"tz","ⓤ":"u","ｕ":"u","ù":"u","ú":"u","û":"u","ũ":"u","ṹ":"u","ū":"u","ṻ":"u","ŭ":"u","ü":"u","ǜ":"u","ǘ":"u","ǖ":"u","ǚ":"u","ủ":"u","ů":"u","ű":"u","ǔ":"u","ȕ":"u","ȗ":"u","ư":"u","ừ":"u","ứ":"u","ữ":"u","ử":"u","ự":"u","ụ":"u","ṳ":"u","ų":"u","ṷ":"u","ṵ":"u","ʉ":"u","ⓥ":"v","ｖ":"v","ṽ":"v","ṿ":"v","ʋ":"v","ꝟ":"v","ʌ":"v","ꝡ":"vy","ⓦ":"w","ｗ":"w","ẁ":"w","ẃ":"w","ŵ":"w","ẇ":"w","ẅ":"w","ẘ":"w","ẉ":"w","ⱳ":"w","ⓧ":"x","ｘ":"x","ẋ":"x","ẍ":"x","ⓨ":"y","ｙ":"y","ỳ":"y","ý":"y","ŷ":"y","ỹ":"y","ȳ":"y","ẏ":"y","ÿ":"y","ỷ":"y","ẙ":"y","ỵ":"y","ƴ":"y","ɏ":"y","ỿ":"y","ⓩ":"z","ｚ":"z","ź":"z","ẑ":"z","ż":"z","ž":"z","ẓ":"z","ẕ":"z","ƶ":"z","ȥ":"z","ɀ":"z","ⱬ":"z","ꝣ":"z"}
+},{}],25:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+var map = require( './latinize-map.json' ) ;
+
+module.exports = function( str )
+{
+	return str.replace( /[^\u0000-\u007e]/g , function( c ) { return map[ c ] || c ; } ) ;
+} ;
+
+            
+
+},{"./latinize-map.json":24}],26:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+exports.resize = function resize( str , length )
+{
+	if ( str.length === length )
+	{
+		return str ;
+	}
+	else if ( str.length > length )
+	{
+		return str.slice( 0 , length ) ;
+	}
+	else
+	{
+		return str + ' '.repeat( length - str.length ) ;
+	}
+} ;
+
+
+
+},{}],27:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+/* All polyfill borrowed from MDN: developer.mozilla.org */
+
+
+
+var polyfill = {} ;
+module.exports = polyfill ;
+
+
+
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/repeat
+polyfill.repeat = function(count)
+{
+  if (this === null) {
+    throw new TypeError('can\'t convert ' + this + ' to object');
+  }
+  var str = '' + this;
+  count = +count;
+  if (count !== count) {
+    count = 0;
+  }
+  if (count < 0) {
+    throw new RangeError('repeat count must be non-negative');
+  }
+  if (count === Infinity) {
+    throw new RangeError('repeat count must be less than infinity');
+  }
+  count = Math.floor(count);
+  if (str.length === 0 || count === 0) {
+    return '';
+  }
+  // Ensuring count is a 31-bit integer allows us to heavily optimize the
+  // main part. But anyway, most current (August 2014) browsers can't handle
+  // strings 1 << 28 chars or longer, so:
+  if (str.length * count >= 1 << 28) {
+    throw new RangeError('repeat count must not overflow maximum string size');
+  }
+  var rpt = '';
+  for (;;) {
+    if ((count & 1) === 1) {
+      rpt += str;
+    }
+    count >>>= 1;
+    if (count === 0) {
+      break;
+    }
+    str += str;
+  }
+  return rpt;
+} ;
+
+
+
+},{}],28:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+var escape = require( './escape.js' ) ;
+
+
+
+exports.regexp = {} ;
+
+
+
+exports.regexp.array2alternatives = function array2alternatives( array )
+{
+	var i , sorted = array.slice() ;
+	
+	// Sort descending by string length
+	sorted.sort( function( a , b ) {
+		return b.length - a.length ;
+	} ) ;
+	
+	// Then escape what should be
+	for ( i = 0 ; i < sorted.length ; i ++ )
+	{
+		sorted[ i ] = escape.regExpPattern( sorted[ i ] ) ;
+	}
+	
+	return sorted.join( '|' ) ;
+} ;
+
+
+
+},{"./escape.js":21}],29:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+// Load modules
+var tree = require( 'tree-kit' ) ;
+
+
+
+var stringKit = {} ;
+module.exports = stringKit ;
+
+
+
+// Tier 0: add polyfills to stringKit
+var fn ;
+var polyfill = require( './polyfill.js' ) ;
+
+for ( fn in polyfill )
+{
+	stringKit[ fn ] = function( str ) { // jshint ignore:line
+		return polyfill[ fn ].apply( str , Array.prototype.slice.call( arguments , 1 ) ) ;
+	} ; // jshint ignore:line
+}
+
+
+
+tree.extend( null , stringKit ,
+	
+	// Tier 1
+	{ escape: require( './escape.js' ) } ,
+	{ ansi: require( './ansi.js' ) } ,
+	{ unicode: require( './unicode.js' ) }
+) ;
+
+
+
+tree.extend( null , stringKit ,
+	
+	// Tier 2
+	require( './format.js' ) ,
+	
+	// Tier 3
+	require( './misc.js' ) ,
+	require( './inspect.js' ) ,
+	require( './regexp.js' ) ,
+	require( './camel.js' ) ,
+	{ latinize: require( './latinize.js' ) }
+) ;
+
+
+
+// Install all polyfill into String.prototype
+stringKit.installPolyfills = function installPolyfills()
+{
+	var fn ;
+	
+	for ( fn in polyfill )
+	{
+		if ( ! String.prototype[ fn ] )
+		{
+			String.prototype[ fn ] = polyfill[ fn ] ;
+		}
+	}
+} ;
+
+
+
+
+
+},{"./ansi.js":19,"./camel.js":20,"./escape.js":21,"./format.js":22,"./inspect.js":23,"./latinize.js":25,"./misc.js":26,"./polyfill.js":27,"./regexp.js":28,"./unicode.js":30,"tree-kit":37}],30:[function(require,module,exports){
+/*
+	String Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+/*
+	Javascript does not use UTF-8 but UCS-2.
+	The purpose of this module is to process correctly strings containing UTF-8 characters that take more than 2 bytes.
+	
+	Note: in monospace font, any single unicode character that has a length of 2 is a full-width char, and therefore
+	is displayed in 2 monospace cells.
+*/
+
+
+
+// Load modules
+var punycode = require( 'punycode' ) ;
+
+
+
+// Create the module and export it
+var unicode = {} ;
+module.exports = unicode ;
+
+
+
+// Get the length of an unicode string
+unicode.length = function length( str )
+{
+	return punycode.ucs2.decode( str ).length ;
+} ;
+
+
+
+// Return an array of chars
+unicode.toArray = function toArray( str )
+{
+	return punycode.ucs2.decode( str ).map( function( code ) {
+		return punycode.ucs2.encode( [ code ] ) ;
+	} ) ;
+} ;
+
+
+
+/*
+	Returns:
+		0: single char
+		1: leading surrogate
+		-1: trailing surrogate
+	
+	Note: it does not check input, to gain perfs.
+*/
+unicode.surrogatePair = function surrogatePair( char )
+{
+	var code = char.charCodeAt( 0 ) ;
+	
+	if ( code < 0xd800 || code >= 0xe000 ) { return 0 ; }
+	else if ( code < 0xdc00 ) { return 1 ; }
+	else { return -1 ; }
+} ;
+
+
+
+/*
+	Check if a character is a full-width char or not.
+	
+	Borrowed from Node.js source, from readline.js.
+*/
+unicode.isFullWidth = function isFullWidth( char )
+{
+	var code = char.codePointAt( 0 ) ;
+	
+	// Code points are derived from:
+	// http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
+	if ( code >= 0x1100 && (
+			code <= 0x115f ||	// Hangul Jamo
+			0x2329 === code || // LEFT-POINTING ANGLE BRACKET
+			0x232a === code || // RIGHT-POINTING ANGLE BRACKET
+			// CJK Radicals Supplement .. Enclosed CJK Letters and Months
+			( 0x2e80 <= code && code <= 0x3247 && code !== 0x303f ) ||
+			// Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
+			0x3250 <= code && code <= 0x4dbf ||
+			// CJK Unified Ideographs .. Yi Radicals
+			0x4e00 <= code && code <= 0xa4c6 ||
+			// Hangul Jamo Extended-A
+			0xa960 <= code && code <= 0xa97c ||
+			// Hangul Syllables
+			0xac00 <= code && code <= 0xd7a3 ||
+			// CJK Compatibility Ideographs
+			0xf900 <= code && code <= 0xfaff ||
+			// Vertical Forms
+			0xfe10 <= code && code <= 0xfe19 ||
+			// CJK Compatibility Forms .. Small Form Variants
+			0xfe30 <= code && code <= 0xfe6b ||
+			// Halfwidth and Fullwidth Forms
+			0xff01 <= code && code <= 0xff60 ||
+			0xffe0 <= code && code <= 0xffe6 ||
+			// Kana Supplement
+			0x1b000 <= code && code <= 0x1b001 ||
+			// Enclosed Ideographic Supplement
+			0x1f200 <= code && code <= 0x1f251 ||
+			// CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
+			0x20000 <= code && code <= 0x3fffd ) ) {
+		return true ;
+	}
+	
+	return false ;
+} ;
+
+
+
+// Convert normal ASCII chars to their full-width counterpart
+unicode.toFullWidth = function toFullWidth( str )
+{
+	return punycode.ucs2.encode( 
+		punycode.ucs2.decode( str ).map( function( code ) {
+			if ( code >= 33 && code <= 126 ) { return 0xff00 + code - 0x20 ; }
+			else { return code ; }
+		} )
+	) ;
+} ;
+
+
+
+},{"punycode":18}],31:[function(require,module,exports){
+/*
+	Tree Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+/*
+	Stand-alone fork of extend.js, without options.
+*/
+
+module.exports = function clone( originalObject , circular )
+{
+	// First create an empty object with
+	// same prototype of our original source
+	
+	var propertyIndex , descriptor , keys , current , nextSource , indexOf ,
+		copies = [ {
+			source: originalObject ,
+			target: Array.isArray( originalObject ) ? [] : Object.create( Object.getPrototypeOf( originalObject ) )
+		} ] ,
+		cloneObject = copies[ 0 ].target ,
+		sourceReferences = [ originalObject ] ,
+		targetReferences = [ cloneObject ] ;
+	
+	// First in, first out
+	while ( current = copies.shift() )	// jshint ignore:line
+	{
+		keys = Object.getOwnPropertyNames( current.source ) ;
+
+		for ( propertyIndex = 0 ; propertyIndex < keys.length ; propertyIndex ++ )
+		{
+			// Save the source's descriptor
+			descriptor = Object.getOwnPropertyDescriptor( current.source , keys[ propertyIndex ] ) ;
+			
+			if ( ! descriptor.value || typeof descriptor.value !== 'object' )
+			{
+				Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
+				continue ;
+			}
+			
+			nextSource = descriptor.value ;
+			descriptor.value = Array.isArray( nextSource ) ? [] : Object.create( Object.getPrototypeOf( nextSource ) ) ;
+			
+			if ( circular )
+			{
+				indexOf = sourceReferences.indexOf( nextSource ) ;
+				
+				if ( indexOf !== -1 )
+				{
+					// The source is already referenced, just assign reference
+					descriptor.value = targetReferences[ indexOf ] ;
+					Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
+					continue ;
+				}
+				
+				sourceReferences.push( nextSource ) ;
+				targetReferences.push( descriptor.value ) ;
+			}
+			
+			Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
+			
+			copies.push( { source: nextSource , target: descriptor.value } ) ;
+		}
+	}
+	
+	return cloneObject ;
+} ;
+
+},{}],32:[function(require,module,exports){
+/*
+	Tree Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+/*
+	== Diff function ==
+*/
+
+function diff( left , right , options )
+{
+	var i , key , keyPath ,
+		leftKeys , rightKeys , leftTypeof , rightTypeof ,
+		depth , diffObject , length , arrayMode ;
+	
+	leftTypeof = typeof left ;
+	rightTypeof = typeof right ;
+	
+	if (
+		! left || ( leftTypeof !== 'object' && leftTypeof !== 'function' ) ||
+		! right || ( rightTypeof !== 'object' && rightTypeof !== 'function' )
+	)
+	{
+		throw new Error( '[tree] diff() needs objects as argument #0 and #1' ) ;
+	}
+	
+	if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	depth = options.depth || 0 ;
+	
+	// Things applied only for the root, not for recursive call
+	if ( ! depth )
+	{
+		options.diffObject = {} ;
+		if ( ! options.path ) { options.path = '' ; }
+		if ( ! options.pathSeparator ) { options.pathSeparator = '.' ; }
+	}
+	
+	diffObject = options.diffObject ;
+	
+	
+	// Left part
+	if ( Array.isArray( left ) )
+	{
+		arrayMode = true ;
+		length = left.length ;
+	}
+	else
+	{
+		arrayMode = false ;
+		leftKeys = Object.keys( left ) ;
+		length = leftKeys.length ;
+	}
+	
+	for ( i = 0 ; i < length ; i ++ )
+	{
+		key = arrayMode ? i : leftKeys[ i ] ;
+		keyPath = options.path + options.pathSeparator + key ;
+		//console.log( 'L keyPath:' , keyPath ) ;
+		
+		if ( ! right.hasOwnProperty( key ) )
+		{
+			diffObject[ keyPath ] = { path: keyPath , message: 'does not exist in right-hand side' } ;
+			continue ;
+		}
+		
+		leftTypeof = typeof left[ key ] ;
+		rightTypeof = typeof right[ key ] ;
+		
+		if ( leftTypeof !== rightTypeof )
+		{
+			diffObject[ keyPath ] = { path: keyPath , message: 'different typeof: ' + leftTypeof + ' - ' + rightTypeof } ;
+			continue ;
+		}
+		
+		if ( leftTypeof === 'object' || leftTypeof === 'function' )
+		{
+			// Cleanup the 'null is an object' mess
+			if ( ! left[ key ] )
+			{
+				if ( right[ key ] ) { diffObject[ keyPath ] = { path: keyPath , message: 'different type: null - Object' } ; }
+				continue ;
+			}
+			
+			if ( ! right[ key ] )
+			{
+				diffObject[ keyPath ] = { path: keyPath , message: 'different type: Object - null' } ;
+				continue ;
+			}
+			
+			if ( Array.isArray( left[ key ] ) && ! Array.isArray( right[ key ] ) )
+			{
+				diffObject[ keyPath ] = { path: keyPath , message: 'different type: Array - Object' } ;
+				continue ;
+			}
+			
+			if ( ! Array.isArray( left[ key ] ) && Array.isArray( right[ key ] ) )
+			{
+				diffObject[ keyPath ] = { path: keyPath , message: 'different type: Object - Array' } ;
+				continue ;
+			}
+			
+			diff( left[ key ] , right[ key ] , { path: keyPath , pathSeparator: options.pathSeparator , depth: depth + 1 , diffObject: diffObject } ) ;
+			continue ;
+		}
+		
+		if ( left[ key ] !== right[ key ] )
+		{
+			diffObject[ keyPath ] = { path: keyPath , message: 'different value: ' + left[ key ] + ' - ' + right[ key ] } ;
+			continue ;
+		}
+	}
+	
+	
+	// Right part
+	if ( Array.isArray( right ) )
+	{
+		arrayMode = true ;
+		length = right.length ;
+	}
+	else
+	{
+		arrayMode = false ;
+		rightKeys = Object.keys( right ) ;
+		length = rightKeys.length ;
+	}
+	
+	for ( i = 0 ; i < length ; i ++ )
+	{
+		key = arrayMode ? i : rightKeys[ i ] ;
+		keyPath = options.path + options.pathSeparator + key ;
+		//console.log( 'R keyPath:' , keyPath ) ;
+		
+		if ( ! left.hasOwnProperty( key ) )
+		{
+			diffObject[ keyPath ] = { path: keyPath , message: 'does not exist in left-hand side' } ;
+			continue ;
+		}
+	}
+	
+	return Object.keys( diffObject ).length ? diffObject : null ;
+}
+
+exports.diff = diff ;
+
+
+},{}],33:[function(require,module,exports){
+/*
+	Tree Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+/*
+	== Extend function ==
+*/
+
+/*
+	options:
+		* own: only copy own properties that are enumerable
+		* nonEnum: copy non-enumerable properties as well, works only with own:true
+		* descriptor: preserve property's descriptor
+		* deep: perform a deep (recursive) extend
+		* maxDepth: used in conjunction with deep, when max depth is reached an exception is raised, default to 100 when
+			the 'circular' option is off, or default to null if 'circular' is on
+		* circular: circular references reconnection
+		* move: move properties to target (delete properties from the sources)
+		* preserve: existing properties in the target object are not overwritten
+		* nofunc: skip functions
+		* deepFunc: in conjunction with 'deep', this will process sources functions like objects rather than
+			copying/referencing them directly into the source, thus, the result will not be a function, it forces 'deep'
+		* proto: try to clone objects with the right prototype, using Object.create() or mutating it with Object.setPrototypeOf(),
+			it forces option 'own'.
+		* inherit: rather than mutating target prototype for source prototype like the 'proto' option does, here it is
+			the source itself that IS the prototype for the target. Force option 'own' and disable 'proto'.
+		* skipRoot: the prototype of the target root object is NOT mutated only if this option is set.
+		* flat: extend into the target top-level only, compose name with the path of the source, force 'deep',
+			disable 'unflat', 'proto', 'inherit'
+		* unflat: assume sources are in the 'flat' format, expand all properties deeply into the target, disable 'flat'
+		* deepFilter
+			* blacklist: list of black-listed prototype: the recursiveness of the 'deep' option will be disabled
+				for object whose prototype is listed
+			* whitelist: the opposite of blacklist
+*/
+function extend( options , target )
+{
+	//console.log( "\nextend():\n" , arguments ) ;
+	var i , source , newTarget = false , length = arguments.length ;
+	
+	if ( length < 3 ) { return target ; }
+	
+	var sources = Array.prototype.slice.call( arguments , 2 ) ;
+	length = sources.length ;
+	
+	if ( ! options || typeof options !== 'object' ) { options = {} ; }
+	
+	var runtime = { depth: 0 , prefix: '' } ;
+	
+	if ( ! options.maxDepth && options.deep && ! options.circular ) { options.maxDepth = 100 ; }
+	
+	if ( options.deepFunc ) { options.deep = true ; }
+	
+	if ( options.deepFilter && typeof options.deepFilter === 'object' )
+	{
+		if ( options.deepFilter.whitelist && ( ! Array.isArray( options.deepFilter.whitelist ) || ! options.deepFilter.whitelist.length ) ) { delete options.deepFilter.whitelist ; }
+		if ( options.deepFilter.blacklist && ( ! Array.isArray( options.deepFilter.blacklist ) || ! options.deepFilter.blacklist.length ) ) { delete options.deepFilter.blacklist ; }
+		if ( ! options.deepFilter.whitelist && ! options.deepFilter.blacklist ) { delete options.deepFilter ; }
+	}
+	
+	// 'flat' option force 'deep'
+	if ( options.flat )
+	{
+		options.deep = true ;
+		options.proto = false ;
+		options.inherit = false ;
+		options.unflat = false ;
+		if ( typeof options.flat !== 'string' ) { options.flat = '.' ; }
+	}
+	
+	if ( options.unflat )
+	{
+		options.deep = false ;
+		options.proto = false ;
+		options.inherit = false ;
+		options.flat = false ;
+		if ( typeof options.unflat !== 'string' ) { options.unflat = '.' ; }
+	}
+	
+	// If the prototype is applied, only owned properties should be copied
+	if ( options.inherit ) { options.own = true ; options.proto = false ; }
+	else if ( options.proto ) { options.own = true ; }
+	
+	if ( ! target || ( typeof target !== 'object' && typeof target !== 'function' ) )
+	{
+		newTarget = true ;
+	}
+	
+	if ( ! options.skipRoot && ( options.inherit || options.proto ) )
+	{
+		for ( i = length - 1 ; i >= 0 ; i -- )
+		{
+			source = sources[ i ] ;
+			if ( source && ( typeof source === 'object' || typeof source === 'function' ) )
+			{
+				if ( options.inherit )
+				{
+					if ( newTarget ) { target = Object.create( source ) ; }
+					else { Object.setPrototypeOf( target , source ) ; }
+				}
+				else if ( options.proto )
+				{
+					if ( newTarget ) { target = Object.create( Object.getPrototypeOf( source ) ) ; }
+					else { Object.setPrototypeOf( target , Object.getPrototypeOf( source ) ) ; }
+				}
+				
+				break ;
+			}
+		}
+	}
+	else if ( newTarget )
+	{
+		target = {} ;
+	}
+	
+	runtime.references = { sources: [] , targets: [] } ;
+	
+	for ( i = 0 ; i < length ; i ++ )
+	{
+		source = sources[ i ] ;
+		if ( ! source || ( typeof source !== 'object' && typeof source !== 'function' ) ) { continue ; }
+		extendOne( runtime , options , target , source ) ;
+	}
+	
+	return target ;
+}
+
+module.exports = extend ;
+
+
+
+function extendOne( runtime , options , target , source )
+{
+	//console.log( "\nextendOne():\n" , arguments ) ;
+	//process.exit() ;
+	
+	var j , jmax , sourceKeys , sourceKey , sourceValue , sourceValueProto ,
+		value , sourceDescriptor , targetKey , targetPointer , path ,
+		indexOfSource = -1 ;
+	
+	// Max depth check
+	if ( options.maxDepth && runtime.depth > options.maxDepth )
+	{
+		throw new Error( '[tree] extend(): max depth reached(' + options.maxDepth + ')' ) ;
+	}
+	
+		
+	if ( options.circular )
+	{
+		runtime.references.sources.push( source ) ;
+		runtime.references.targets.push( target ) ;
+	}
+	
+	if ( options.own )
+	{
+		if ( options.nonEnum ) { sourceKeys = Object.getOwnPropertyNames( source ) ; }
+		else { sourceKeys = Object.keys( source ) ; }
+	}
+	else { sourceKeys = source ; }
+	
+	for ( sourceKey in sourceKeys )
+	{
+		if ( options.own ) { sourceKey = sourceKeys[ sourceKey ] ; }
+		
+		// If descriptor is on, get it now
+		if ( options.descriptor )
+		{
+			sourceDescriptor = Object.getOwnPropertyDescriptor( source , sourceKey ) ;
+			sourceValue = sourceDescriptor.value ;
+		}
+		else
+		{
+			// We have to trigger an eventual getter only once
+			sourceValue = source[ sourceKey ] ;
+		}
+		
+		targetPointer = target ;
+		targetKey = runtime.prefix + sourceKey ;
+		
+		// Do not copy if property is a function and we don't want them
+		if ( options.nofunc && typeof sourceValue === 'function' ) { continue; }
+		
+		// 'unflat' mode computing
+		if ( options.unflat && runtime.depth === 0 )
+		{
+			path = sourceKey.split( options.unflat ) ;
+			jmax = path.length - 1 ;
+			
+			if ( jmax )
+			{
+				for ( j = 0 ; j < jmax ; j ++ )
+				{
+					if ( ! targetPointer[ path[ j ] ] ||
+						( typeof targetPointer[ path[ j ] ] !== 'object' &&
+							typeof targetPointer[ path[ j ] ] !== 'function' ) )
+					{
+						targetPointer[ path[ j ] ] = {} ;
+					}
+					
+					targetPointer = targetPointer[ path[ j ] ] ;
+				}
+				
+				targetKey = runtime.prefix + path[ jmax ] ;
+			}
+		}
+		
+		
+		if ( options.deep &&
+			sourceValue &&
+			( typeof sourceValue === 'object' || ( options.deepFunc && typeof sourceValue === 'function' ) ) &&
+			( ! options.descriptor || ! sourceDescriptor.get ) &&
+			// not a condition we just cache sourceValueProto now
+			( ( sourceValueProto = Object.getPrototypeOf( sourceValue ) ) || true ) &&
+			( ! options.deepFilter ||
+				( ( ! options.deepFilter.whitelist || options.deepFilter.whitelist.indexOf( sourceValueProto ) !== -1 ) &&
+					( ! options.deepFilter.blacklist || options.deepFilter.blacklist.indexOf( sourceValueProto ) === -1 ) ) ) )
+		{
+			if ( options.circular )
+			{
+				indexOfSource = runtime.references.sources.indexOf( sourceValue ) ;
+			}
+			
+			if ( options.flat )
+			{
+				// No circular references reconnection when in 'flat' mode
+				if ( indexOfSource >= 0 ) { continue ; }
+				
+				extendOne(
+					{ depth: runtime.depth + 1 , prefix: runtime.prefix + sourceKey + options.flat , references: runtime.references } ,
+					options , targetPointer , sourceValue
+				) ;
+			}
+			else
+			{
+				if ( indexOfSource >= 0 )
+				{
+					// Circular references reconnection...
+					if ( options.descriptor )
+					{
+						Object.defineProperty( targetPointer , targetKey , {
+							value: runtime.references.targets[ indexOfSource ] ,
+							enumerable: sourceDescriptor.enumerable ,
+							writable: sourceDescriptor.writable ,
+							configurable: sourceDescriptor.configurable
+						} ) ;
+					}
+					else
+					{
+						targetPointer[ targetKey ] = runtime.references.targets[ indexOfSource ] ;
+					}
+					
+					continue ;
+				}
+				
+				if ( ! targetPointer[ targetKey ] || ! targetPointer.hasOwnProperty( targetKey ) || ( typeof targetPointer[ targetKey ] !== 'object' && typeof targetPointer[ targetKey ] !== 'function' ) )
+				{
+					if ( Array.isArray( sourceValue ) ) { value = [] ; }
+					else if ( options.proto ) { value = Object.create( sourceValueProto ) ; }	// jshint ignore:line
+					else if ( options.inherit ) { value = Object.create( sourceValue ) ; }
+					else { value = {} ; }
+					
+					if ( options.descriptor )
+					{
+						Object.defineProperty( targetPointer , targetKey , {
+							value: value ,
+							enumerable: sourceDescriptor.enumerable ,
+							writable: sourceDescriptor.writable ,
+							configurable: sourceDescriptor.configurable
+						} ) ;
+					}
+					else
+					{
+						targetPointer[ targetKey ] = value ;
+					}
+				}
+				else if ( options.proto && Object.getPrototypeOf( targetPointer[ targetKey ] ) !== sourceValueProto )
+				{
+					Object.setPrototypeOf( targetPointer[ targetKey ] , sourceValueProto ) ;
+				}
+				else if ( options.inherit && Object.getPrototypeOf( targetPointer[ targetKey ] ) !== sourceValue )
+				{
+					Object.setPrototypeOf( targetPointer[ targetKey ] , sourceValue ) ;
+				}
+				
+				if ( options.circular )
+				{
+					runtime.references.sources.push( sourceValue ) ;
+					runtime.references.targets.push( targetPointer[ targetKey ] ) ;
+				}
+				
+				// Recursively extends sub-object
+				extendOne(
+					{ depth: runtime.depth + 1 , prefix: '' , references: runtime.references } ,
+					options , targetPointer[ targetKey ] , sourceValue
+				) ;
+			}
+		}
+		else if ( options.preserve && targetPointer[ targetKey ] !== undefined )
+		{
+			// Do not overwrite, and so do not delete source's properties that were not moved
+			continue ;
+		}
+		else if ( ! options.inherit )
+		{
+			if ( options.descriptor ) { Object.defineProperty( targetPointer , targetKey , sourceDescriptor ) ; }
+			else { targetPointer[ targetKey ] = sourceValue ; }
+		}
+		
+		// Delete owned property of the source object
+		if ( options.move ) { delete source[ sourceKey ] ; }
+	}
+}
+
+
+},{}],34:[function(require,module,exports){
+/*
+	Tree Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+/*
+	== Lazy function ==
+*/
+
+exports.defineLazyProperty = function defineLazyProperty( object , name , func )
+{
+	Object.defineProperty( object , name , {
+		configurable: true ,
+		enumerable: true ,
+		get: function() {
+			
+			var value = func() ;
+			
+			Object.defineProperty( object , name , {
+				configurable: true ,
+				enumerable: true ,
+				writable: false ,
+				value: value
+			} ) ;
+			
+			return value ;
+		}
+	} ) ;
+} ;
+
+},{}],35:[function(require,module,exports){
+/*
+	Tree Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+// Load modules
+var tree = require( './tree.js' ) ;
+var util = require( 'util' ) ;
+
+
+
+// Create and export
+var masklib = {} ;
+module.exports = masklib ;
+
+
+
+/*
+	== Mask-family class ==
+	
+	Recursively select values in the input object if the same path in the mask object is set.
+*/
+
+/*
+	TODO:
+	- negative mask
+	- constraint check
+	- Maskable object, like in csk-php
+*/
+
+masklib.Mask = function Mask()
+{
+	throw new Error( 'Cannot create a tree.Mask() directly' ) ;
+} ;
+
+
+
+var maskDefaultOptions = {
+	clone: false ,
+	path: '<object>' ,
+	pathSeparator: '.'
+} ;
+
+
+
+/*
+	options:
+		clone: the output clone the input rather than reference it
+		pathSeperator: when expressing path, this is the separator
+		leaf: a callback to exec for each mask leaf
+		node? a callback to exec for each mask node
+*/
+masklib.createMask = function createMask( maskArgument , options )
+{
+	if ( maskArgument === null || typeof maskArgument !== 'object' )
+	{
+		throw new TypeError( '[tree] .createMask() : Argument #1 should be an object' ) ;
+	}
+	
+	if ( options !== null && typeof options === 'object' ) { options = tree.extend( null , {} , maskDefaultOptions , options ) ; }
+	else { options = maskDefaultOptions ; }
+	
+	var mask = Object.create( masklib.Mask.prototype , {
+		__options__: { value: options , writable: true  }
+	} ) ;
+	
+	tree.extend( null , mask , maskArgument ) ;
+	
+	return mask ;
+} ;
+
+
+
+// Apply the mask to an input tree
+masklib.Mask.prototype.applyTo = function applyTo( input , context , contextOverideDefault )
+{
+	// Arguments checking
+	if ( input === null || typeof input !== 'object' )
+	{
+		throw new TypeError( '[tree] .applyTo() : Argument #1 should be an object' ) ;
+	}
+	
+	if ( contextOverideDefault )
+	{
+		context = tree.extend( null ,
+			{
+				mask: this ,
+				options: this.__options__ ,
+				path: this.__options__.path
+			} ,
+			context
+		) ;
+	}
+	else if ( context === undefined )
+	{
+		context = {
+			mask: this ,
+			options: this.__options__ ,
+			path: this.__options__.path
+		} ;
+	}
+	
+	
+	// Init
+	//console.log( context ) ;
+	var result , nextPath , output ,
+		i , key , maskValue ,
+		maskKeyList = Object.keys( context.mask ) ,
+		j , inputKey , inputValue , inputKeyList ;
+	
+	if ( Array.isArray( input ) ) { output = [] ; }
+	else { output = {} ; }
+	
+	
+	// Iterate through mask properties
+	for ( i = 0 ; i < maskKeyList.length ; i ++ )
+	{
+		key = maskKeyList[ i ] ;
+		maskValue = context.mask[ key ] ;
+		
+		//console.log( '\nnext loop: ' , key , maskValue ) ;
+		
+		// The special key * is a wildcard, it match everything
+		if ( key === '*' )
+		{
+			//console.log( 'wildcard' ) ;
+			inputKeyList = Object.keys( input ) ;
+			
+			for ( j = 0 ; j < inputKeyList.length ; j ++ )
+			{
+				inputKey = inputKeyList[ j ] ;
+				inputValue = input[ inputKey ] ;
+				
+				//console.log( '*: ' , inputKey ) ;
+				nextPath = context.path + context.options.pathSeparator + inputKey ;
+				
+				// If it is an array or object, recursively check it
+				if ( maskValue !== null && typeof maskValue === 'object' )
+				{
+					if ( input[ inputKey ] !== null && typeof input[ inputKey ] === 'object' )
+					{
+						if ( input[ inputKey ] instanceof masklib.Mask )
+						{
+							output[ inputKey ] = input[ inputKey ].applyTo( input[ inputKey ] , { path: nextPath } , true ) ;
+						}
+						else
+						{
+							output[ inputKey ] = this.applyTo( input[ inputKey ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
+						}
+					}
+					else if ( typeof context.options.leaf === 'function' )
+					{
+						output[ inputKey ] = this.applyTo( {} , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
+					}
+				}
+				else if ( maskValue !== null && typeof context.options.leaf === 'function' )
+				{
+					//console.log( 'leaf callback' ) ;
+					result = context.options.leaf( input , inputKey , maskValue , nextPath ) ;
+					if ( ! ( result instanceof Error ) ) { output[ inputKey ] = result ; }
+				}
+				else
+				{
+					if ( context.options.clone && ( input[ inputKey ] !== null && typeof input[ inputKey ] === 'object' ) )
+					{
+						output[ inputKey ] = tree.extend( { deep: true } , {} , input[ inputKey ] ) ;
+					}
+					else
+					{
+						output[ inputKey ] = input[ inputKey ] ;
+					}
+				}
+			}
+			
+			continue ;
+		}
+		
+		
+		nextPath = context.path + context.options.pathSeparator + key ;
+		
+		// If it is an object, recursively check it
+		//if ( maskValue instanceof masklib.Mask )
+		if ( maskValue !== null && typeof maskValue === 'object' )
+		{
+			//console.log( 'sub' ) ;
+			
+			if ( input.hasOwnProperty( key ) && input[ key ] !== null && typeof input[ key ] === 'object' )
+			{
+				//console.log( 'recursive call' ) ;
+				
+				if ( input.key instanceof masklib.Mask )
+				{
+					output[ key ] = input.key.applyTo( input[ key ] , { path: nextPath } , true ) ;
+				}
+				else
+				{
+					output[ key ] = this.applyTo( input[ key ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
+				}
+			}
+			// recursive call only if there are callback
+			else if ( context.options.leaf )
+			{
+				//console.log( 'recursive call' ) ;
+				output[ key ] = this.applyTo( {} , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
+			}
+		}
+		// If mask exists, add the key
+		else if ( input.hasOwnProperty( key ) )
+		{
+			//console.log( 'property found' ) ;
+			
+			if ( maskValue !== undefined && typeof context.options.leaf === 'function' )
+			{
+				//console.log( 'leaf callback' ) ;
+				result = context.options.leaf( input , key , maskValue , nextPath ) ;
+				if ( ! ( result instanceof Error ) ) { output[ key ] = result ; }
+			}
+			else
+			{
+				if ( context.options.clone && ( input[ key ] !== null && typeof input[ key ] === 'object' ) )
+				{
+					output[ key ] = tree.extend( { deep: true } , {} , input[ key ] ) ;
+				}
+				else
+				{
+					output[ key ] = input[ key ] ;
+				}
+			}
+		}
+		else if ( maskValue !== undefined && typeof context.options.leaf === 'function' )
+		{
+			//console.log( 'leaf callback' ) ;
+			result = context.options.leaf( input , key , maskValue , nextPath ) ;
+			if ( ! ( result instanceof Error ) ) { output[ key ] = result ; }
+		}
+	}
+	
+	return output ;
+} ;
+
+
+
+// InverseMask: create an output tree from the input, by excluding properties of the mask
+
+masklib.InverseMask = function InverseMask()
+{
+	throw new Error( 'Cannot create a tree.InverseMask() directly' ) ;
+} ;
+
+util.inherits( masklib.InverseMask , masklib.Mask ) ;
+
+
+
+/*
+	options:
+		clone: the output clone the input rather than reference it
+		pathSeperator: when expressing path, this is the separator
+*/
+masklib.createInverseMask = function createInverseMask( maskArgument , options )
+{
+	if ( maskArgument === null || typeof maskArgument !== 'object' )
+	{
+		throw new TypeError( '[tree] .createInverseMask() : Argument #1 should be an object' ) ;
+	}
+	
+	if ( options !== null && typeof options === 'object' ) { options = tree.extend( null , {} , maskDefaultOptions , options ) ; }
+	else { options = maskDefaultOptions ; }
+	
+	var mask = Object.create( masklib.InverseMask.prototype , {
+		__options__: { value: options , writable: true  }
+	} ) ;
+	
+	tree.extend( null , mask , maskArgument ) ;
+	
+	return mask ;
+} ;
+
+
+
+// Apply the mask to an input tree
+masklib.InverseMask.prototype.applyTo = function applyTo( input , context , contextOverideDefault )
+{
+	// Arguments checking
+	if ( input === null || typeof input !== 'object' )
+	{
+		throw new TypeError( '[tree] .applyTo() : Argument #1 should be an object' ) ;
+	}
+	
+	if ( contextOverideDefault )
+	{
+		context = tree.extend( null ,
+			{
+				mask: this ,
+				options: this.__options__ ,
+				path: this.__options__.path
+			} ,
+			context
+		) ;
+	}
+	else if ( context === undefined )
+	{
+		context = {
+			mask: this ,
+			options: this.__options__ ,
+			path: this.__options__.path
+		} ;
+	}
+	
+	
+	// Init
+	//console.log( context ) ;
+	var nextPath , output ,
+		i , key , maskValue ,
+		maskKeyList = Object.keys( context.mask ) ,
+		j , inputKey , inputValue , inputKeyList ;
+	
+	if ( Array.isArray( input ) ) { output = tree.extend( { deep: true } , [] , input ) ; }
+	else { output = tree.extend( { deep: true } , {} , input ) ; }
+	
+	//console.log( output ) ;
+	
+	// Iterate through mask properties
+	for ( i = 0 ; i < maskKeyList.length ; i ++ )
+	{
+		key = maskKeyList[ i ] ;
+		maskValue = context.mask[ key ] ;
+		
+		//console.log( '\nnext loop: ' , key , maskValue ) ;
+		
+		// The special key * is a wildcard, it match everything
+		if ( key === '*' )
+		{
+			//console.log( 'wildcard' ) ;
+			inputKeyList = Object.keys( input ) ;
+			
+			for ( j = 0 ; j < inputKeyList.length ; j ++ )
+			{
+				inputKey = inputKeyList[ j ] ;
+				inputValue = input[ inputKey ] ;
+				
+				//console.log( '*: ' , inputKey ) ;
+				nextPath = context.path + context.options.pathSeparator + inputKey ;
+				
+				// If it is an array or object, recursively check it
+				if ( maskValue !== null && typeof maskValue === 'object' )
+				{
+					if ( input[ inputKey ] !== null && typeof input[ inputKey ] === 'object' )
+					{
+						if ( input[ inputKey ] instanceof masklib.Mask )
+						{
+							output[ inputKey ] = input[ inputKey ].applyTo( input[ inputKey ] , { path: nextPath } , true ) ;
+						}
+						else
+						{
+							output[ inputKey ] = this.applyTo( input[ inputKey ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
+						}
+					}
+				}
+				else
+				{
+					delete output[ inputKey ] ;
+				}
+			}
+			
+			continue ;
+		}
+		
+		
+		nextPath = context.path + context.options.pathSeparator + key ;
+		
+		// If it is an object, recursively check it
+		//if ( maskValue instanceof masklib.Mask )
+		if ( maskValue !== null && typeof maskValue === 'object' )
+		{
+			//console.log( 'sub' ) ;
+			
+			if ( input.hasOwnProperty( key ) && input[ key ] !== null && typeof input[ key ] === 'object' )
+			{
+				//console.log( 'recursive call' ) ;
+				
+				if ( input.key instanceof masklib.Mask )
+				{
+					output[ key ] = input.key.applyTo( input[ key ] , { path: nextPath } , true ) ;
+				}
+				else
+				{
+					output[ key ] = this.applyTo( input[ key ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
+				}
+			}
+		}
+		// If mask exists, remove the key
+		else if ( input.hasOwnProperty( key ) )
+		{
+			delete output[ key ] ;
+		}
+	}
+	
+	return output ;
+} ;
+
+},{"./tree.js":37,"util":40}],36:[function(require,module,exports){
+/*
+	Tree Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+var treePath = {} ;
+module.exports = treePath ;
+
+
+
+treePath.op = function op( type , object , path , value )
+{
+	var i , parts , last , pointer , key , isArray = false , pathArrayMode = false , isGenericSet , canBeEmpty = true ;
+	
+	if ( ! object || ( typeof object !== 'object' && typeof object !== 'function' ) )
+	{
+		return ;
+	}
+	
+	if ( typeof path === 'string' )
+	{
+		// Split the path into parts
+		if ( path ) { parts = path.match( /([.#\[\]]|[^.#\[\]]+)/g ) ; }
+		else { parts = [ '' ] ; }
+		
+		if ( parts[ 0 ] === '.' ) { parts.unshift( '' ) ; }
+		if ( parts[ parts.length - 1 ] === '.' ) { parts.push( '' ) ; }
+	}
+	else if ( Array.isArray( path ) )
+	{
+		parts = path ;
+		pathArrayMode = true ;
+	}
+	else
+	{
+		throw new TypeError( '[tree.path] .' + type + '(): the path argument should be a string or an array' ) ;
+	}
+	
+	switch ( type )
+	{
+		case 'get' :
+		case 'delete' :
+			isGenericSet = false ;
+			break ;
+		case 'set' :
+		case 'define' :
+		case 'inc' :
+		case 'dec' :
+		case 'append' :
+		case 'prepend' :
+		case 'concat' :
+		case 'insert' :
+		case 'autoPush' :
+			isGenericSet = true ;
+			break ;
+		default :
+			throw new TypeError( "[tree.path] .op(): wrong type of operation '" + type + "'" ) ;
+	}
+	
+	//console.log( parts ) ;
+	// The pointer start at the object's root
+	pointer = object ;
+	
+	last = parts.length - 1 ;
+	
+	for ( i = 0 ; i <= last ; i ++ )
+	{
+		if ( pathArrayMode )
+		{
+			if ( key === undefined )
+			{
+				key = parts[ i ] ;
+				continue ;
+			}
+			
+			if ( ! pointer[ key ] || ( typeof pointer[ key ] !== 'object' && typeof pointer[ key ] !== 'function' ) )
+			{
+				if ( ! isGenericSet ) { return undefined ; }
+				pointer[ key ] = {} ;
+			}
+			
+			pointer = pointer[ key ] ;
+			key = parts[ i ] ;
+			
+			continue ;
+		}
+		else if ( parts[ i ] === '.' )
+		{
+			isArray = false ;
+			
+			if ( key === undefined )
+			{
+				if ( ! canBeEmpty )
+				{
+					canBeEmpty = true ;
+					continue ;
+				}
+				
+				key = '' ;
+			}
+			
+			if ( ! pointer[ key ] || ( typeof pointer[ key ] !== 'object' && typeof pointer[ key ] !== 'function' ) )
+			{
+				if ( ! isGenericSet ) { return undefined ; }
+				pointer[ key ] = {} ;
+			}
+			
+			pointer = pointer[ key ] ;
+			canBeEmpty = true ;
+			
+			continue ;
+		}
+		else if ( parts[ i ] === '#' || parts[ i ] === '[' )
+		{
+			isArray = true ;
+			canBeEmpty = false ;
+			
+			if ( key === undefined )
+			{
+				// The root element cannot be altered, we are in trouble if an array is expected but we have only a regular object.
+				if ( ! Array.isArray( pointer ) ) { return undefined ; }
+				continue ;
+			}
+			
+			if ( ! pointer[ key ] || ! Array.isArray( pointer[ key ] ) )
+			{
+				if ( ! isGenericSet ) { return undefined ; }
+				pointer[ key ] = [] ;
+			}
+			
+			pointer = pointer[ key ] ;
+			
+			continue ;
+		}
+		else if ( parts[ i ] === ']' )
+		{
+			// Closing bracket: do nothing
+			canBeEmpty = false ;
+			continue ;
+		}
+		
+		canBeEmpty = false ;
+		
+		if ( ! isArray ) { key = parts[ i ] ; continue ; }
+		
+		switch ( parts[ i ] )
+		{
+			case 'length' :
+				key = parts[ i ] ;
+				break ;
+			
+			// Pseudo-key
+			case 'first' :
+				key = 0 ;
+				break ;
+			case 'last' :
+				key = pointer.length - 1 ;
+				if ( key < 0 ) { key = 0 ; }
+				break ;
+			case 'next' :
+				if ( ! isGenericSet ) { return undefined ; }
+				key = pointer.length ;
+				break ;
+			case 'insert' :
+				if ( ! isGenericSet ) { return undefined ; }
+				pointer.unshift( undefined ) ;
+				key = 0 ;
+				break ;
+			
+			// default = number
+			default:
+				// Convert the string key to a numerical index
+				key = parseInt( parts[ i ] , 10 ) ;
+		}
+	}
+	
+	switch ( type )
+	{
+		case 'get' :
+			return pointer[ key ] ;
+		case 'delete' :
+			if ( isArray && typeof key === 'number' ) { pointer.splice( key , 1 ) ; }
+			else { delete pointer[ key ] ; }
+			return ;
+		case 'set' :
+			pointer[ key ] = value ;
+			return pointer[ key ] ;
+		case 'define' :
+			// define: set only if it doesn't exist
+			if ( ! ( key in pointer ) ) { pointer[ key ] = value ; }
+			return pointer[ key ] ;
+		case 'inc' :
+			if ( typeof pointer[ key ] === 'number' ) { pointer[ key ] ++ ; }
+			else if ( ! pointer[ key ] || typeof pointer[ key ] !== 'object' ) { pointer[ key ] = 1 ; }
+			return pointer[ key ] ;
+		case 'dec' :
+			if ( typeof pointer[ key ] === 'number' ) { pointer[ key ] -- ; }
+			else if ( ! pointer[ key ] || typeof pointer[ key ] !== 'object' ) { pointer[ key ] = -1 ; }
+			return pointer[ key ] ;
+		case 'append' :
+			if ( ! pointer[ key ] ) { pointer[ key ] = [ value ] ; }
+			else if ( Array.isArray( pointer[ key ] ) ) { pointer[ key ].push( value ) ; }
+			//else ? do nothing???
+			return pointer[ key ] ;
+		case 'prepend' :
+			if ( ! pointer[ key ] ) { pointer[ key ] = [ value ] ; }
+			else if ( Array.isArray( pointer[ key ] ) ) { pointer[ key ].unshift( value ) ; }
+			//else ? do nothing???
+			return pointer[ key ] ;
+		case 'concat' :
+			if ( ! pointer[ key ] ) { pointer[ key ] = value ; }
+			else if ( Array.isArray( pointer[ key ] ) && Array.isArray( value ) )
+			{
+				pointer[ key ] = pointer[ key ].concat( value ) ;
+			}
+			//else ? do nothing???
+			return pointer[ key ] ;
+		case 'insert' :
+			if ( ! pointer[ key ] ) { pointer[ key ] = value ; }
+			else if ( Array.isArray( pointer[ key ] ) && Array.isArray( value ) )
+			{
+				pointer[ key ] = value.concat( pointer[ key ] ) ;
+			}
+			//else ? do nothing???
+			return pointer[ key ] ;
+		case 'autoPush' :
+			if ( pointer[ key ] === undefined ) { pointer[ key ] = value ; }
+			else if ( Array.isArray( pointer[ key ] ) ) { pointer[ key ].push( value ) ; }
+			else { pointer[ key ] = [ pointer[ key ] , value ] ; }
+			return pointer[ key ] ;
+	}
+} ;
+
+
+
+// get, set and delete use the same op() function
+treePath.get = treePath.op.bind( undefined , 'get' ) ;
+treePath.delete = treePath.op.bind( undefined , 'delete' ) ;
+treePath.set = treePath.op.bind( undefined , 'set' ) ;
+treePath.define = treePath.op.bind( undefined , 'define' ) ;
+treePath.inc = treePath.op.bind( undefined , 'inc' ) ;
+treePath.dec = treePath.op.bind( undefined , 'dec' ) ;
+treePath.append = treePath.op.bind( undefined , 'append' ) ;
+treePath.prepend = treePath.op.bind( undefined , 'prepend' ) ;
+treePath.concat = treePath.op.bind( undefined , 'concat' ) ;
+treePath.insert = treePath.op.bind( undefined , 'insert' ) ;
+treePath.autoPush = treePath.op.bind( undefined , 'autoPush' ) ;
+
+
+
+// Prototype used for object creation, so they can be created with Object.create( tree.path.prototype )
+treePath.prototype = {
+	get: function( path ) { return treePath.get( this , path ) ; } ,
+	delete: function( path ) { return treePath.delete( this , path ) ; } ,
+	set: function( path , value ) { return treePath.set( this , path , value ) ; } ,
+	define: function( path , value ) { return treePath.define( this , path , value ) ; } ,
+	inc: function( path , value ) { return treePath.inc( this , path , value ) ; } ,
+	dec: function( path , value ) { return treePath.dec( this , path , value ) ; } ,
+	append: function( path , value ) { return treePath.append( this , path , value ) ; } ,
+	prepend: function( path , value ) { return treePath.prepend( this , path , value ) ; } ,
+	concat: function( path , value ) { return treePath.concat( this , path , value ) ; } ,
+	insert: function( path , value ) { return treePath.insert( this , path , value ) ; } ,
+	autoPush: function( path , value ) { return treePath.autoPush( this , path , value ) ; }
+} ;
+
+
+
+// Upgrade an object so it can support get, set and delete at its root
+treePath.upgrade = function upgrade( object )
+{
+	Object.defineProperties( object , {
+		get: { value: treePath.op.bind( undefined , 'get' , object ) } ,
+		delete: { value: treePath.op.bind( undefined , 'delete' , object ) } ,
+		set: { value: treePath.op.bind( undefined , 'set' , object ) } ,
+		define: { value: treePath.op.bind( undefined , 'define' , object ) } ,
+		inc: { value: treePath.op.bind( undefined , 'inc' , object ) } ,
+		dec: { value: treePath.op.bind( undefined , 'dec' , object ) } ,
+		append: { value: treePath.op.bind( undefined , 'append' , object ) } ,
+		prepend: { value: treePath.op.bind( undefined , 'prepend' , object ) } ,
+		concat: { value: treePath.op.bind( undefined , 'concat' , object ) } ,
+		insert: { value: treePath.op.bind( undefined , 'insert' , object ) } ,
+		autoPush: { value: treePath.op.bind( undefined , 'autoPush' , object ) }
+	} ) ;
+} ;
+
+
+
+
+},{}],37:[function(require,module,exports){
+/*
+	Tree Kit
+	
+	Copyright (c) 2014 - 2016 Cédric Ronvel
+	
+	The MIT License (MIT)
+	
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+	
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+	
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+
+// Create and export
+var tree = {} ;
+module.exports = tree ;
+
+
+// Tier 0: extend() is even used to build the module
+tree.extend = require( './extend.js' ) ;
+
+
+
+tree.extend( null , tree ,
+	
+	// Tier 1
+	require( './lazy.js' ) ,
+	
+	// Tier 2
+	{ clone: require( './clone.js' ) } ,
+	
+	// Tier 3
+	{ path: require( './path.js' ) } ,
+	require( './diff.js' ) ,
+	require( './mask.js' )
+) ;
+
+
+
+},{"./clone.js":31,"./diff.js":32,"./extend.js":33,"./lazy.js":34,"./mask.js":35,"./path.js":36}],38:[function(require,module,exports){
+if (typeof Object.create === 'function') {
+  // implementation from standard node.js 'util' module
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    ctor.prototype = Object.create(superCtor.prototype, {
+      constructor: {
+        value: ctor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+      }
+    });
+  };
+} else {
+  // old school shim for old browsers
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    var TempCtor = function () {}
+    TempCtor.prototype = superCtor.prototype
+    ctor.prototype = new TempCtor()
+    ctor.prototype.constructor = ctor
+  }
+}
+
+},{}],39:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],17:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5636,3083 +10303,5 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":16,"_process":14,"inherits":10}],18:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
-
-	Copyright (c) 2015 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-// Empty constructor, it is just there to support instanceof operator
-function CommonTransport() { throw new Error( "[logger] Cannot create a CommonTransport object directly" ) ; }
-module.exports = CommonTransport ;
-
-
-
-CommonTransport.create = function create( logger , config )
-{
-	var transport = Object.create( CommonTransport.prototype ) ;
-	transport.init( logger , config ) ;
-	return transport ;
-} ;
-
-
-
-CommonTransport.prototype.init = function init( logger , config )
-{
-	Object.defineProperties( this , {
-		logger: { value: logger , enumerable: true } ,
-		monitoring: { value: false , writable: true , enumerable: true } ,
-		minLevel: { value: 0 , writable: true , enumerable: true } ,
-		maxLevel: { value: 6 , writable: true , enumerable: true } ,
-		messageFormatter: { value: logger.messageFormatter.text , writable: true , enumerable: true } ,
-		timeFormatter: { value: logger.timeFormatter.dateTime , writable: true , enumerable: true }
-	} ) ;
-	
-	if ( config ) { this.setConfig( config ) ; }
-} ;
-
-
-
-CommonTransport.prototype.setConfig = function setConfig( config )
-{
-	if ( config.monitoring !== undefined ) { this.monitoring = !! config.monitoring ; }
-	
-	if ( config.minLevel !== undefined )
-	{
-		if ( typeof config.minLevel === 'number' ) { this.minLevel = config.minLevel ; }
-		else if ( typeof config.minLevel === 'string' ) { this.minLevel = this.logger.levelHash[ config.minLevel ] ; }
-	}
-	
-	if ( config.maxLevel !== undefined )
-	{
-		if ( typeof config.maxLevel === 'number' ) { this.maxLevel = config.maxLevel ; }
-		else if ( typeof config.maxLevel === 'string' ) { this.maxLevel = this.logger.levelHash[ config.maxLevel ] ; }
-	}
-	
-	if ( config.messageFormatter )
-	{
-		if ( typeof config.messageFormatter === 'function' ) { this.messageFormatter = config.messageFormatter ; }
-		else { this.messageFormatter = this.logger.messageFormatter[ config.messageFormatter ] ; }
-	}
-	
-	if ( config.timeFormatter )
-	{
-		if ( typeof config.timeFormatter === 'function' ) { this.timeFormatter = config.timeFormatter ; }
-		else { this.timeFormatter = this.logger.timeFormatter[ config.timeFormatter ] ; }
-	}
-} ;
-
-
-
-CommonTransport.prototype.transport = function transport( data , cache , callback )
-{
-	callback() ;
-} ;
-
-
-
-CommonTransport.prototype.shutdown = function shutdown() {} ;
-
-
-
-},{}],19:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-// To solve dependency hell, we do not rely on terminal-kit anymore.
-module.exports = {
-	reset: '\x1b[0m' ,
-	bold: '\x1b[1m' ,
-	dim: '\x1b[2m' ,
-	italic: '\x1b[3m' ,
-	underline: '\x1b[4m' ,
-	inverse: '\x1b[7m' ,
-	defaultColor: '\x1b[39m' ,
-	black: '\x1b[30m' ,
-	red: '\x1b[31m' ,
-	green: '\x1b[32m' ,
-	yellow: '\x1b[33m' ,
-	blue: '\x1b[34m' ,
-	magenta: '\x1b[35m' ,
-	cyan: '\x1b[36m' ,
-	white: '\x1b[37m' ,
-	brightBlack: '\x1b[90m' ,
-	brightRed: '\x1b[91m' ,
-	brightGreen: '\x1b[92m' ,
-	brightYellow: '\x1b[93m' ,
-	brightBlue: '\x1b[94m' ,
-	brightMagenta: '\x1b[95m' ,
-	brightCyan: '\x1b[96m' ,
-	brightWhite: '\x1b[97m' ,
-} ;
-
-
-
-},{}],20:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-var camel = {} ;
-module.exports = camel ;
-
-
-
-// Transform alphanum separated by underscore or minus to camel case
-camel.toCamelCase = function toCamelCase( str )
-{
-	if ( ! str || typeof str !== 'string' ) { return '' ; }
-	
-	return str.replace( /^[\s_-]*([^\s_-]+)|[\s_-]+([^\s_-]?)([^\s_-]*)/g , function( match , firstWord , firstLetter , endOfWord ) {
-		
-		if ( firstWord ) { return firstWord.toLowerCase() ; }
-		if ( ! firstLetter ) { return '' ; }
-		return firstLetter.toUpperCase() + endOfWord.toLowerCase() ;
-	} ) ;
-} ;
-
-
-
-// Transform camel case to alphanum separated by minus
-camel.camelCaseToDashed = function camelCaseToDashed( str )
-{
-	if ( ! str || typeof str !== 'string' ) { return '' ; }
-	
-	return str.replace( /^([A-Z])|([A-Z])/g , function( match , firstLetter , letter ) {
-		
-		if ( firstLetter ) { return firstLetter.toLowerCase() ; }
-		return '-' + letter.toLowerCase() ;
-	} ) ;
-} ;
-
-
-
-},{}],21:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-/*
-	Escape collection.
-*/
-
-
-
-"use strict" ;
-
-
-
-// Load modules
-//var tree = require( 'tree-kit' ) ;
-
-
-
-// From Mozilla Developper Network
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
-exports.regExp = exports.regExpPattern = function escapeRegExpPattern( str ) {
-	return str.replace( /([.*+?^${}()|\[\]\/\\])/g , '\\$1' ) ;
-} ;
-
-exports.regExpReplacement = function escapeRegExpReplacement( str ) {
-	return str.replace( /\$/g , '$$$$' ) ;	// This replace any single $ by a double $$
-} ;
-
-
-
-exports.format = function escapeFormat( str ) {
-	return str.replace( /%/g , '%%' ) ;	// This replace any single % by a double %%
-} ;
-
-
-
-exports.shellArg = function escapeShellArg( str ) {
-	return '\'' + str.replace( /\'/g , "'\\''" ) + '\'' ;
-} ;
-
-
-
-var escapeControlMap = { '\r': '\\r', '\n': '\\n', '\t': '\\t', '\x7f': '\\x7f' } ;
-
-// Escape \r \n \t so they become readable again, escape all ASCII control character as well, using \x syntaxe
-exports.control = function escapeControl( str ) {
-	return str.replace( /[\x00-\x1f\x7f]/g , function( match ) {
-		if ( escapeControlMap[ match ] !== undefined ) { return escapeControlMap[ match ] ; }
-		var hex = match.charCodeAt( 0 ).toString( 16 ) ;
-		if ( hex.length % 2 ) { hex = '0' + hex ; }
-		return '\\x' + hex ;
-	} ) ;
-} ;
-
-
-
-var escapeHtmlMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' } ;
-
-// Only escape & < > so this is suited for content outside tags
-exports.html = function escapeHtml( str ) {
-	return str.replace( /[&<>]/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
-} ;
-
-// Escape & < > " so this is suited for content inside a double-quoted attribute
-exports.htmlAttr = function escapeHtmlAttr( str ) {
-	return str.replace( /[&<>"]/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
-} ;
-
-// Escape all html special characters & < > " '
-exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
-	return str.replace( /[&<>"']/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
-} ;
-
-
-
-},{}],22:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-/*
-	String formater, inspired by C's sprintf().
-*/
-
-
-
-"use strict" ;
-
-
-
-// Load modules
-//var tree = require( 'tree-kit' ) ;
-var inspect = require( './inspect.js' ).inspect ;
-var inspectError = require( './inspect.js' ).inspectError ;
-var ansi = require( './ansi.js' ) ;
-
-
-
-/*
-	%%		a single %
-	%s		string
-	%f		float
-	%d	%i	integer
-	%u		unsigned integer
-	%U		unsigned positive integer (>0)
-	%h		hexadecimal
-	%x		hexadecimal, force pair of symbols (e.g. 'f' -> '0f')
-	%o		octal
-	%b		binary
-	%I		call string-kit's inspect()
-	%E		call string-kit's inspectError()
-	%J		JSON.stringify()
-	%D		drop
-	%F		filter function existing in the 'this' context, e.g. %[filter:%a%a]F
-	%a		argument for a function
-	
-	Candidate format:
-	%A		for automatic type?
-	%c		for char? (can receive a string or an integer translated into an UTF8 chars)
-	%C		for currency formating?
-	%B		for Buffer objects?
-	%e		for scientific notation?
-*/
-
-exports.formatMethod = function format( str )
-{
-	if ( typeof str !== 'string' )
-	{
-		if ( str === null || str === undefined ) { return '' ; }
-		else if ( /*str && typeof str === 'object' && */ typeof str.toString === 'function' ) { str = str.toString() ; }
-		else { return '' ; }
-	}
-	
-	var self = this , arg , value ,
-		autoIndex = 1 , args = arguments , length = arguments.length ,
-		hasMarkup = false ;
-	
-	//console.log( 'format args:' , arguments ) ;
-	
-	// /!\ each changes here should be reported on string.format.count() and string.format.hasFormatting() too /!\
-	//str = str.replace( /\^(.?)|%(?:([+-]?)([0-9]*)(?:\/([^\/]*)\/)?([a-zA-Z%])|\[([a-zA-Z0-9_]+)(?::([^\]]*))?\])/g ,
-	str = str.replace( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/g ,
-		function( match , markup , doublePercent , relative , index , modeArg , mode ) {		// jshint ignore:line
-			
-			var i , n , tmp , fn , fnArgString , argMatches , argList = [] ;
-			
-			//console.log( 'replaceArgs:' , arguments ) ;
-			if ( doublePercent ) { return '%'; }
-			
-			if ( markup )
-			{
-				if ( markup === '^' ) { return '^' ; }
-				if ( ! self.markup ) { return '' ; }
-				hasMarkup = true ;
-				return self.markup[ markup ] || '' ;
-			}
-			
-			
-			if ( index )
-			{
-				index = parseInt( index ) ;
-				
-				if ( relative )
-				{
-					if ( relative === '+' ) { index = autoIndex + index ; }
-					else if ( relative === '-' ) { index = autoIndex - index ; }
-				}
-			}
-			else
-			{
-				index = autoIndex ;
-			}
-			
-			autoIndex ++ ;
-			
-			if ( index >= length || index < 1 ) { arg = undefined ; }
-			else { arg = args[ index ] ; }
-			
-			switch ( mode )
-			{
-				case 's' :	// string
-					if ( arg === null || arg === undefined ) { return '' ; }
-					if ( typeof arg === 'string' ) { return arg ; }
-					if ( typeof arg === 'number' ) { return '' + arg ; }
-					if ( typeof arg.toString === 'function' ) { return arg.toString() ; }
-					return '' ;
-				case 'f' :	// float
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg !== 'number' ) { return '0' ; }
-					if ( modeArg !== undefined )
-					{
-						// Use jQuery number format?
-						switch ( modeArg[ 0 ] )
-						{
-							case 'p' :
-								n = parseInt( modeArg.slice( 1 ) , 10 ) ;
-								if ( n >= 1 ) { arg = arg.toPrecision( n ) ; }
-								break ;
-							case 'f' :
-								n = parseInt( modeArg.slice( 1 ) , 10 ) ;
-								arg = arg.toFixed( n ) ;
-								break ;
-						}
-					}
-					return '' + arg ;
-				case 'd' :
-				case 'i' :	// integer decimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.floor( arg ) ; }
-					return '0' ;
-				case 'u' :	// unsigned decimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ) ; }
-					return '0' ;
-				case 'U' :	// unsigned positive decimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 1 ) ; }
-					return '1' ;
-				case 'x' :	// unsigned hexadecimal, force pair of symbole
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
-					if ( typeof arg !== 'number' ) { return '0' ; }
-					value = '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ;
-					if ( value.length % 2 ) { value = '0' + value ; }
-					return value ;
-				case 'h' :	// unsigned hexadecimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ; }
-					return '0' ;
-				case 'o' :	// unsigned octal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 8 ) ; }
-					return '0' ;
-				case 'b' :	// unsigned binary
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 2 ) ; }
-					return '0' ;
-				case 'I' :
-					return inspect( { style: ( self && self.color ? 'color' : 'none' ) } , arg ) ;
-				case 'E' :
-					return inspectError( { style: ( self && self.color ? 'color' : 'none' ) } , arg ) ;
-				case 'J' :
-					return JSON.stringify( arg ) ;
-				case 'D' :
-					return '' ;
-				case 'F' :	// Function
-					
-					autoIndex -- ;	// %F does not eat any arg
-					
-					if ( modeArg === undefined ) { return '' ; }
-					tmp = modeArg.split( ':' ) ;
-					fn = tmp[ 0 ] ;
-					fnArgString = tmp[ 1 ] ;
-					if ( ! fn ) { return '' ; }
-					
-					if ( fnArgString && ( argMatches = fnArgString.match( /%([+-]?)([0-9]*)[a-zA-Z]/g ) ) )
-					{
-						//console.log( argMatches ) ;
-						//console.log( fnArgString ) ;
-						for ( i = 0 ; i < argMatches.length ; i ++ )
-						{
-							relative = argMatches[ i ][ 1 ] ;
-							index = argMatches[ i ][ 2 ] ;
-							
-							if ( index )
-							{
-								index = parseInt( index , 10 ) ;
-								
-								if ( relative )
-								{
-									if ( relative === '+' ) { index = autoIndex + index ; }		// jshint ignore:line
-									else if ( relative === '-' ) { index = autoIndex - index ; }	// jshint ignore:line
-								}
-							}
-							else
-							{
-								index = autoIndex ;
-							}
-							
-							autoIndex ++ ;
-							
-							if ( index >= length || index < 1 ) { argList[ i ] = undefined ; }
-							else { argList[ i ] = args[ index ] ; }
-						}
-					}
-					
-					if ( ! self || ! self.fn || typeof self.fn[ fn ] !== 'function' ) { return '' ; }
-					return self.fn[ fn ].apply( self , argList ) ;
-				
-				default :
-					return '' ;
-			}
-	} ) ;
-	
-	if ( hasMarkup && this.markupReset && this.endingMarkupReset ) { str += this.markupReset ; }
-	
-	if ( this.extraArguments )
-	{
-		for ( ; autoIndex < length ; autoIndex ++ )
-		{
-			arg = args[ autoIndex ] ;
-			if ( arg === null || arg === undefined ) { continue ; }
-			else if ( typeof arg === 'string' ) { str += arg ; }
-			else if ( typeof arg === 'number' ) { str += arg ; }
-			else if ( typeof arg.toString === 'function' ) { str += arg.toString() ; }
-		}
-	}
-	
-	return str ;
-} ;
-
-
-
-var defaultFormatter = {
-	extraArguments: true ,
-	endingMarkupReset: true ,
-	markupReset: ansi.reset ,
-	markup: {
-		":": ansi.reset ,
-		" ": ansi.reset + " " ,
-		
-		"-": ansi.dim ,
-		"+": ansi.bold ,
-		"_": ansi.underline ,
-		"/": ansi.italic ,
-		"!": ansi.inverse ,
-		
-		"b": ansi.blue ,
-		"B": ansi.brightBlue ,
-		"c": ansi.cyan ,
-		"C": ansi.brightCyan ,
-		"g": ansi.green ,
-		"G": ansi.brightGreen ,
-		"k": ansi.black ,
-		"K": ansi.brightBlack ,
-		"m": ansi.magenta ,
-		"M": ansi.brightMagenta ,
-		"r": ansi.red ,
-		"R": ansi.brightRed ,
-		"w": ansi.white ,
-		"W": ansi.brightWhite ,
-		"y": ansi.yellow ,
-		"Y": ansi.brightYellow
-	}
-} ;
-
-
-
-exports.format = exports.formatMethod.bind( defaultFormatter ) ;
-exports.format.default = defaultFormatter ;
-
-
-
-// Count the number of parameters needed for this string
-exports.format.count = function formatCount( str )
-{
-	var match , index , relative , autoIndex = 1 , maxIndex = 0 ;
-	
-	if ( typeof str !== 'string' ) { return 0 ; }
-	
-	// This regex differs slightly from the main regex: we do not count '%%' and %F is excluded
-	var regexp = /%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-EG-Z])/g ;
-	
-	
-	while ( ( match = regexp.exec( str ) ) !== null )
-	{
-		//console.log( match ) ;
-		relative = match[ 1 ] ;
-		index = match[ 2 ] ;
-		
-		if ( index )
-		{
-			index = parseInt( index , 10 ) ;
-			
-			if ( relative )
-			{
-				if ( relative === '+' ) { index = autoIndex + index ; }
-				else if ( relative === '-' ) { index = autoIndex - index ; }
-			}
-		}
-		else
-		{
-			index = autoIndex ;
-		}
-		
-		autoIndex ++ ;
-		
-		if ( maxIndex < index ) { maxIndex = index ; }
-	}
-	
-	return maxIndex ;
-} ;
-
-
-
-// Tell if this string contains formatter chars
-exports.format.hasFormatting = function hasFormatting( str )
-{
-	if ( str.search( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/ ) !== -1 ) { return true ; }
-	else { return false ; }
-} ;
-
-
-
-},{"./ansi.js":19,"./inspect.js":23}],23:[function(require,module,exports){
-(function (Buffer,process){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-/* global Map, Set */
-
-/*
-	Variable inspector.
-*/
-
-
-
-"use strict" ;
-
-
-
-// Load modules
-var treeExtend = require( 'tree-kit/lib/extend.js' ) ;
-var escape = require( './escape.js' ) ;
-var ansi = require( './ansi.js' ) ;
-
-
-
-/*
-	Inspect a variable, return a string ready to be displayed with console.log(), or even as an HTML output.
-	
-	Options:
-		* style:
-			* 'none': (default) normal output suitable for console.log() or writing in a file
-			* 'color': colorful output suitable for terminal
-			* 'html': html output
-		* depth: depth limit, default: 3
-		* noFunc: do not display functions
-		* noDescriptor: do not display descriptor information
-		* noType: do not display type and constructor
-		* enumOnly: only display enumerable properties
-		* funcDetails: display function's details
-		* proto: display object's prototype
-		* sort: sort the keys
-		* minimal: imply noFunc: true, noDescriptor: true, noType: true, enumOnly: true, proto: false and funcDetails: false.
-		  Display a minimal JSON-like output
-		* useInspect? use .inspect() method when available on an object
-*/
-
-function inspect( options , variable )
-{
-	if ( arguments.length < 2 ) { variable = options ; options = {} ; }
-	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
-	var runtime = { depth: 0 , ancestors: [] } ;
-	
-	if ( ! options.style ) { options.style = inspectStyle.none ; }
-	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
-	
-	if ( options.depth === undefined ) { options.depth = 3 ; }
-	
-	// /!\ nofunc is deprecated
-	if ( options.nofunc ) { options.noFunc = true ; }
-	
-	if ( options.minimal )
-	{
-		options.noFunc = true ;
-		options.noDescriptor = true ;
-		options.noType = true ;
-		options.enumOnly = true ;
-		options.funcDetails = false ;
-		options.proto = false ;
-	}
-	
-	return inspect_( runtime , options , variable ) ;
-}
-
-
-
-function inspect_( runtime , options , variable )
-{
-	var i , funcName , length , propertyList , constructor , keyIsProperty ,
-		type , pre , indent , isArray , isFunc , specialObject ,
-		str = '' , key = '' , descriptorStr = '' , descriptor , nextAncestors ;
-	
-	
-	// Prepare things (indentation, key, descriptor, ... )
-	
-	type = typeof variable ;
-	indent = options.style.tab.repeat( runtime.depth ) ;
-	
-	if ( type === 'function' && options.noFunc ) { return '' ; }
-	
-	if ( runtime.key !== undefined )
-	{
-		if ( runtime.descriptor )
-		{
-			descriptorStr = [] ;
-			
-			if ( ! runtime.descriptor.configurable ) { descriptorStr.push( '-conf' ) ; }
-			if ( ! runtime.descriptor.enumerable ) { descriptorStr.push( '-enum' ) ; }
-			
-			// Already displayed by runtime.forceType
-			//if ( runtime.descriptor.get || runtime.descriptor.set ) { descriptorStr.push( 'getter/setter' ) ; } else
-			if ( ! runtime.descriptor.writable ) { descriptorStr.push( '-w' ) ; }
-			
-			//if ( descriptorStr.length ) { descriptorStr = '(' + descriptorStr.join( ' ' ) + ')' ; }
-			if ( descriptorStr.length ) { descriptorStr = descriptorStr.join( ' ' ) ; }
-			else { descriptorStr = '' ; }
-		}
-		
-		if ( runtime.keyIsProperty )
-		{
-			if ( keyNeedingQuotes( runtime.key ) )
-			{
-				key = '"' + options.style.key( runtime.key ) + '": ' ;
-			}
-			else
-			{
-				key = options.style.key( runtime.key ) + ': ' ;
-			}
-		}
-		else
-		{
-			key = '[' + options.style.index( runtime.key ) + '] ' ;
-		}
-		
-		if ( descriptorStr ) { descriptorStr = ' ' + options.style.type( descriptorStr ) ; }
-	}
-	
-	pre = runtime.noPre ? '' : indent + key ;
-	
-	
-	// Describe the current variable
-	
-	if ( variable === undefined )
-	{
-		str += pre + options.style.constant( 'undefined' ) + descriptorStr + options.style.nl ;
-	}
-	else if ( variable === null )
-	{
-		str += pre + options.style.constant( 'null' ) + descriptorStr + options.style.nl ;
-	}
-	else if ( variable === false )
-	{
-		str += pre + options.style.constant( 'false' ) + descriptorStr + options.style.nl ;
-	}
-	else if ( variable === true )
-	{
-		str += pre + options.style.constant( 'true' ) + descriptorStr + options.style.nl ;
-	}
-	else if ( type === 'number' )
-	{
-		str += pre + options.style.number( variable.toString() ) +
-			( options.noType ? '' : ' ' + options.style.type( 'number' ) ) +
-			descriptorStr + options.style.nl ;
-	}
-	else if ( type === 'string' )
-	{
-		str += pre + '"' + options.style.string( escape.control( variable ) ) + '" ' +
-			( options.noType ? '' : options.style.type( 'string' ) + options.style.length( '(' + variable.length + ')' ) ) +
-			descriptorStr + options.style.nl ;
-	}
-	else if ( Buffer.isBuffer( variable ) )
-	{
-		str += pre + options.style.inspect( variable.inspect() ) + ' ' +
-			( options.noType ? '' : options.style.type( 'Buffer' ) + options.style.length( '(' + variable.length + ')' ) ) +
-			descriptorStr + options.style.nl ;
-	}
-	else if ( type === 'object' || type === 'function' )
-	{
-		funcName = length = '' ;
-		isFunc = false ;
-		if ( type === 'function' )
-		{
-			isFunc = true ;
-			funcName = ' ' + options.style.funcName( ( variable.name ? variable.name : '(anonymous)' ) ) ;
-			length = options.style.length( '(' + variable.length + ')' ) ;
-		}
-		
-		isArray = false ;
-		if ( Array.isArray( variable ) )
-		{
-			isArray = true ;
-			length = options.style.length( '(' + variable.length + ')' ) ;
-		}
-		
-		if ( ! variable.constructor ) { constructor = '(no constructor)' ; }
-		else if ( ! variable.constructor.name ) { constructor = '(anonymous)' ; }
-		else { constructor = variable.constructor.name ; }
-		
-		constructor = options.style.constructorName( constructor ) ;
-		
-		str += pre ;
-		
-		if ( ! options.noType )
-		{
-			if ( runtime.forceType ) { str += options.style.type( runtime.forceType ) ; }
-			else { str += constructor + funcName + length + ' ' + options.style.type( type ) + descriptorStr ; }
-			
-			if ( ! isFunc || options.funcDetails ) { str += ' ' ; }	// if no funcDetails imply no space here
-		}
-		
-		propertyList = Object.getOwnPropertyNames( variable ) ;
-		
-		if ( options.sort ) { propertyList.sort() ; }
-		
-		// Special Objects
-		specialObject = specialObjectSubstitution( variable ) ;
-		
-		if ( specialObject !== undefined )
-		{
-			str += '=> ' + inspect_( {
-					depth: runtime.depth ,
-					ancestors: runtime.ancestors ,
-					noPre: true
-				} ,
-				options ,
-				specialObject
-			) ;
-		}
-		else if ( isFunc && ! options.funcDetails )
-		{
-			str += options.style.nl ;
-		}
-		else if ( ! propertyList.length && ! options.proto )
-		{
-			str += '{}' + options.style.nl ;
-		}
-		else if ( runtime.depth >= options.depth )
-		{
-			str += options.style.limit( '[depth limit]' ) + options.style.nl ;
-		}
-		else if ( runtime.ancestors.indexOf( variable ) !== -1 )
-		{
-			str += options.style.limit( '[circular]' ) + options.style.nl ;
-		}
-		else
-		{
-			str += ( isArray && options.noType ? '[' : '{' ) + options.style.nl ;
-			
-			// Do not use .concat() here, it doesn't works as expected with arrays...
-			nextAncestors = runtime.ancestors.slice() ;
-			nextAncestors.push( variable ) ;
-			
-			for ( i = 0 ; i < propertyList.length ; i ++ )
-			{
-				try {
-					descriptor = Object.getOwnPropertyDescriptor( variable , propertyList[ i ] ) ;
-					
-					if ( ! descriptor.enumerable && options.enumOnly ) { continue ; }
-					
-					keyIsProperty = ! isArray || ! descriptor.enumerable || isNaN( propertyList[ i ] ) ;
-					
-					if ( ! options.noDescriptor && ( descriptor.get || descriptor.set ) )
-					{
-						str += inspect_( {
-								depth: runtime.depth + 1 ,
-								ancestors: nextAncestors ,
-								key: propertyList[ i ] ,
-								keyIsProperty: keyIsProperty ,
-								descriptor: descriptor ,
-								forceType: 'getter/setter'
-							} ,
-							options ,
-							{ get: descriptor.get , set: descriptor.set }
-						) ;
-					}
-					else
-					{
-						str += inspect_( {
-								depth: runtime.depth + 1 ,
-								ancestors: nextAncestors ,
-								key: propertyList[ i ] ,
-								keyIsProperty: keyIsProperty ,
-								descriptor: options.noDescriptor ? undefined : descriptor
-							} ,
-							options ,
-							variable[ propertyList[ i ] ]
-						) ;
-					}
-				}
-				catch ( error ) {
-					str += inspect_( {
-							depth: runtime.depth + 1 ,
-							ancestors: nextAncestors ,
-							key: propertyList[ i ] ,
-							keyIsProperty: keyIsProperty ,
-							descriptor: options.noDescriptor ? undefined : descriptor
-						} ,
-						options ,
-						error
-					) ;
-				}
-			}
-			
-			if ( options.proto )
-			{
-				str += inspect_( {
-						depth: runtime.depth + 1 ,
-						ancestors: nextAncestors ,
-						key: '__proto__' ,
-						keyIsProperty: true
-					} ,
-					options ,
-					variable.__proto__	// jshint ignore:line
-				) ;
-			}
-			
-			str += indent + ( isArray && options.noType ? ']' : '}' ) + options.style.nl ;
-		}
-	}
-	
-	
-	// Finalizing
-	
-	if ( runtime.depth === 0 )
-	{
-		if ( options.style === 'html' ) { str = escape.html( str ) ; }
-	}
-	
-	return str ;
-}
-
-exports.inspect = inspect ;
-
-
-
-function keyNeedingQuotes( key )
-{
-	if ( ! key.length ) { return true ; }
-	return false ;
-}
-
-
-
-// Some special object are better written down when substituted by something else
-function specialObjectSubstitution( variable )
-{
-	switch ( variable.constructor.name )
-	{
-		case 'Date' :
-			if ( variable instanceof Date )
-			{
-				return variable.toString() + ' [' + variable.getTime() + ']' ;
-			}
-			break ;
-		case 'Set' :
-			if ( typeof Set === 'function' && variable instanceof Set )
-			{
-				// This is an ES6 'Set' Object
-				return Array.from( variable ) ;
-			}
-			break ;
-		case 'Map' :
-			if ( typeof Map === 'function' && variable instanceof Map )
-			{
-				// This is an ES6 'Map' Object
-				return Array.from( variable ) ;
-			}
-			break ;
-		case 'ObjectID' :
-			if ( variable._bsontype )
-			{
-				// This is a MongoDB ObjectID, rather boring to display in its original form
-				// due to esoteric characters that confuse both the user and the terminal displaying it.
-				// Substitute it to its string representation
-				return variable.toString() ;
-			}
-			break ;
-	}
-	
-	return ;
-}
-
-
-
-function inspectError( options , error )
-{
-	var str = '' , stack , type , code ;
-	
-	if ( arguments.length < 2 ) { error = options ; options = {} ; }
-	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
-	if ( ! ( error instanceof Error ) ) { return  ; }
-	
-	if ( ! options.style ) { options.style = inspectStyle.none ; }
-	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
-	
-	if ( error.stack ) { stack = inspectStack( options , error.stack ) ; }
-	
-	type = error.type || error.constructor.name ;
-	code = error.code || error.name || error.errno || error.number ;
-	
-	str += options.style.errorType( type ) +
-		( code ? ' [' + options.style.errorType( code ) + ']' : '' ) + ': ' ;
-	str += options.style.errorMessage( error.message ) + '\n' ;
-	
-	if ( stack ) { str += options.style.errorStack( stack ) + '\n' ; }
-	
-	return str ;
-}
-
-exports.inspectError = inspectError ;
-
-
-
-function inspectStack( options , stack )
-{
-	if ( arguments.length < 2 ) { stack = options ; options = {} ; }
-	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
-	if ( ! options.style ) { options.style = inspectStyle.none ; }
-	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
-	
-	if ( ! stack ) { return ; }
-	
-	if ( ( options.browser || process.browser ) && stack.indexOf( '@' ) !== -1 )
-	{
-		// Assume a Firefox-compatible stack-trace here...
-		stack = stack
-			.replace( /[<\/]*(?=@)/g , '' )	// Firefox output some WTF </</</</< stuff in its stack trace -- removing that
-			.replace(
-				/^\s*([^@]*)\s*@\s*([^\n]*)(?::([0-9]+):([0-9]+))?$/mg ,
-				function( matches , method , file , line , column ) {	// jshint ignore:line
-					return options.style.errorStack( '    at ' ) +
-						( method ? options.style.errorStackMethod( method ) + ' ' : '' ) +
-						options.style.errorStack( '(' ) +
-						( file ? options.style.errorStackFile( file ) : options.style.errorStack( 'unknown' ) ) +
-						( line ? options.style.errorStack( ':' ) + options.style.errorStackLine( line ) : '' ) +
-						( column ? options.style.errorStack( ':' ) + options.style.errorStackColumn( column ) : '' ) +
-						options.style.errorStack( ')' ) ;
-				}
-			) ;
-	}
-	else
-	{
-		stack = stack.replace( /^[^\n]*\n/ , '' ) ;
-		stack = stack.replace(
-			/^\s*(at)\s+(?:([^\s:\(\)\[\]\n]+)\s)?(?:\[as ([^\s:\(\)\[\]\n]+)\]\s)?(?:\(?([^:\(\)\[\]\n]+):([0-9]+):([0-9]+)\)?)?$/mg ,
-			function( matches , at , method , as , file , line , column ) {	// jshint ignore:line
-				return options.style.errorStack( '    at ' ) +
-					( method ? options.style.errorStackMethod( method ) + ' ' : '' ) +
-					( as ? options.style.errorStack( '[as ' ) + options.style.errorStackMethodAs( as ) + options.style.errorStack( '] ' ) : '' ) +
-					options.style.errorStack( '(' ) +
-					( file ? options.style.errorStackFile( file ) : options.style.errorStack( 'unknown' ) ) +
-					( line ? options.style.errorStack( ':' ) + options.style.errorStackLine( line ) : '' ) +
-					( column ? options.style.errorStack( ':' ) + options.style.errorStackColumn( column ) : '' ) +
-					options.style.errorStack( ')' ) ;
-			}
-		) ;
-	}
-	
-	return stack ;
-}
-
-exports.inspectStack = inspectStack ;
-
-
-
-// Inspect's styles
-
-var inspectStyle = {} ;
-
-var inspectStyleNoop = function( str ) { return str ; } ;
-
-
-
-inspectStyle.none = {
-	tab: '    ' ,
-	nl: '\n' ,
-	limit: inspectStyleNoop ,
-	type: function( str ) { return '<' + str + '>' ; } ,
-	constant: inspectStyleNoop ,
-	funcName: inspectStyleNoop ,
-	constructorName: function( str ) { return '<' + str + '>' ; } ,
-	length: inspectStyleNoop ,
-	key: inspectStyleNoop ,
-	index: inspectStyleNoop ,
-	number: inspectStyleNoop ,
-	inspect: inspectStyleNoop ,
-	string: inspectStyleNoop ,
-	errorType: inspectStyleNoop ,
-	errorMessage: inspectStyleNoop ,
-	errorStack: inspectStyleNoop ,
-	errorStackMethod: inspectStyleNoop ,
-	errorStackMethodAs: inspectStyleNoop ,
-	errorStackFile: inspectStyleNoop ,
-	errorStackLine: inspectStyleNoop ,
-	errorStackColumn: inspectStyleNoop
-} ;
-
-
-
-inspectStyle.color = treeExtend( null , {} , inspectStyle.none , {
-	limit: function( str ) { return ansi.bold + ansi.brightRed + str + ansi.reset ; } ,
-	type: function( str ) { return ansi.italic + ansi.brightBlack + str + ansi.reset ; } ,
-	constant: function( str ) { return ansi.cyan + str + ansi.reset ; } ,
-	funcName: function( str ) { return ansi.italic + ansi.magenta + str + ansi.reset ; } ,
-	constructorName: function( str ) { return ansi.magenta + str + ansi.reset ; } ,
-	length: function( str ) { return ansi.italic + ansi.brightBlack + str + ansi.reset ; } ,
-	key: function( str ) { return ansi.green + str + ansi.reset ; } ,
-	index: function( str ) { return ansi.blue + str + ansi.reset ; } ,
-	number: function( str ) { return ansi.cyan + str + ansi.reset ; } ,
-	inspect: function( str ) { return ansi.cyan + str + ansi.reset ; } ,
-	string: function( str ) { return ansi.blue + str + ansi.reset ; } ,
-	errorType: function( str ) { return ansi.red + ansi.bold + str + ansi.reset ; } ,
-	errorMessage: function( str ) { return ansi.red + ansi.italic + str + ansi.reset ; } ,
-	errorStack: function( str ) { return ansi.brightBlack + str + ansi.reset ; } ,
-	errorStackMethod: function( str ) { return ansi.brightYellow + str + ansi.reset ; } ,
-	errorStackMethodAs: function( str ) { return ansi.yellow + str + ansi.reset ; } ,
-	errorStackFile: function( str ) { return ansi.brightCyan + str + ansi.reset ; } ,
-	errorStackLine: function( str ) { return ansi.blue + str + ansi.reset ; } ,
-	errorStackColumn: function( str ) { return ansi.magenta + str + ansi.reset ; }
-} ) ;
-
-
-
-inspectStyle.html = treeExtend( null , {} , inspectStyle.none , {
-	tab: '&nbsp;&nbsp;&nbsp;&nbsp;' ,
-	nl: '<br />' ,
-	limit: function( str ) { return '<span style="color:red">' + str + '</span>' ; } ,
-	type: function( str ) { return '<i style="color:gray">' + str + '</i>' ; } ,
-	constant: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
-	funcName: function( str ) { return '<i style="color:magenta">' + str + '</i>' ; } ,
-	constructorName: function( str ) { return '<span style="color:magenta">' + str + '</span>' ; } ,
-	length: function( str ) { return '<i style="color:gray">' + str + '</i>' ; } ,
-	key: function( str ) { return '<span style="color:green">' + str + '</span>' ; } ,
-	index: function( str ) { return '<span style="color:blue">' + str + '</span>' ; } ,
-	number: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
-	inspect: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
-	string: function( str ) { return '<span style="color:blue">' + str + '</span>' ; } ,
-	errorType: function( str ) { return '<span style="color:red">' + str + '</span>' ; } ,
-	errorMessage: function( str ) { return '<span style="color:red">' + str + '</span>' ; } ,
-	errorStack: function( str ) { return '<span style="color:gray">' + str + '</span>' ; } ,
-	errorStackMethod: function( str ) { return '<span style="color:yellow">' + str + '</span>' ; } ,
-	errorStackMethodAs: function( str ) { return '<span style="color:yellow">' + str + '</span>' ; } ,
-	errorStackFile: function( str ) { return '<span style="color:cyan">' + str + '</span>' ; } ,
-	errorStackLine: function( str ) { return '<span style="color:blue">' + str + '</span>' ; } ,
-	errorStackColumn: function( str ) { return '<span style="color:gray">' + str + '</span>' ; }
-} ) ;
-
-
-
-}).call(this,{"isBuffer":require("../../browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js")},require('_process'))
-},{"../../browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":11,"./ansi.js":19,"./escape.js":21,"_process":14,"tree-kit/lib/extend.js":32}],24:[function(require,module,exports){
-module.exports={"߀":"0","́":""," ":" ","Ⓐ":"A","Ａ":"A","À":"A","Á":"A","Â":"A","Ầ":"A","Ấ":"A","Ẫ":"A","Ẩ":"A","Ã":"A","Ā":"A","Ă":"A","Ằ":"A","Ắ":"A","Ẵ":"A","Ẳ":"A","Ȧ":"A","Ǡ":"A","Ä":"A","Ǟ":"A","Ả":"A","Å":"A","Ǻ":"A","Ǎ":"A","Ȁ":"A","Ȃ":"A","Ạ":"A","Ậ":"A","Ặ":"A","Ḁ":"A","Ą":"A","Ⱥ":"A","Ɐ":"A","Ꜳ":"AA","Æ":"AE","Ǽ":"AE","Ǣ":"AE","Ꜵ":"AO","Ꜷ":"AU","Ꜹ":"AV","Ꜻ":"AV","Ꜽ":"AY","Ⓑ":"B","Ｂ":"B","Ḃ":"B","Ḅ":"B","Ḇ":"B","Ƀ":"B","Ɓ":"B","ｃ":"C","Ⓒ":"C","Ｃ":"C","Ꜿ":"C","Ḉ":"C","Ç":"C","Ⓓ":"D","Ｄ":"D","Ḋ":"D","Ď":"D","Ḍ":"D","Ḑ":"D","Ḓ":"D","Ḏ":"D","Đ":"D","Ɗ":"D","Ɖ":"D","ᴅ":"D","Ꝺ":"D","Ð":"Dh","Ǳ":"DZ","Ǆ":"DZ","ǲ":"Dz","ǅ":"Dz","ɛ":"E","Ⓔ":"E","Ｅ":"E","È":"E","É":"E","Ê":"E","Ề":"E","Ế":"E","Ễ":"E","Ể":"E","Ẽ":"E","Ē":"E","Ḕ":"E","Ḗ":"E","Ĕ":"E","Ė":"E","Ë":"E","Ẻ":"E","Ě":"E","Ȅ":"E","Ȇ":"E","Ẹ":"E","Ệ":"E","Ȩ":"E","Ḝ":"E","Ę":"E","Ḙ":"E","Ḛ":"E","Ɛ":"E","Ǝ":"E","ᴇ":"E","ꝼ":"F","Ⓕ":"F","Ｆ":"F","Ḟ":"F","Ƒ":"F","Ꝼ":"F","Ⓖ":"G","Ｇ":"G","Ǵ":"G","Ĝ":"G","Ḡ":"G","Ğ":"G","Ġ":"G","Ǧ":"G","Ģ":"G","Ǥ":"G","Ɠ":"G","Ꞡ":"G","Ᵹ":"G","Ꝿ":"G","ɢ":"G","Ⓗ":"H","Ｈ":"H","Ĥ":"H","Ḣ":"H","Ḧ":"H","Ȟ":"H","Ḥ":"H","Ḩ":"H","Ḫ":"H","Ħ":"H","Ⱨ":"H","Ⱶ":"H","Ɥ":"H","Ⓘ":"I","Ｉ":"I","Ì":"I","Í":"I","Î":"I","Ĩ":"I","Ī":"I","Ĭ":"I","İ":"I","Ï":"I","Ḯ":"I","Ỉ":"I","Ǐ":"I","Ȉ":"I","Ȋ":"I","Ị":"I","Į":"I","Ḭ":"I","Ɨ":"I","Ⓙ":"J","Ｊ":"J","Ĵ":"J","Ɉ":"J","ȷ":"J","Ⓚ":"K","Ｋ":"K","Ḱ":"K","Ǩ":"K","Ḳ":"K","Ķ":"K","Ḵ":"K","Ƙ":"K","Ⱪ":"K","Ꝁ":"K","Ꝃ":"K","Ꝅ":"K","Ꞣ":"K","Ⓛ":"L","Ｌ":"L","Ŀ":"L","Ĺ":"L","Ľ":"L","Ḷ":"L","Ḹ":"L","Ļ":"L","Ḽ":"L","Ḻ":"L","Ł":"L","Ƚ":"L","Ɫ":"L","Ⱡ":"L","Ꝉ":"L","Ꝇ":"L","Ꞁ":"L","Ǉ":"LJ","ǈ":"Lj","Ⓜ":"M","Ｍ":"M","Ḿ":"M","Ṁ":"M","Ṃ":"M","Ɱ":"M","Ɯ":"M","ϻ":"M","Ꞥ":"N","Ƞ":"N","Ⓝ":"N","Ｎ":"N","Ǹ":"N","Ń":"N","Ñ":"N","Ṅ":"N","Ň":"N","Ṇ":"N","Ņ":"N","Ṋ":"N","Ṉ":"N","Ɲ":"N","Ꞑ":"N","ᴎ":"N","Ǌ":"NJ","ǋ":"Nj","Ⓞ":"O","Ｏ":"O","Ò":"O","Ó":"O","Ô":"O","Ồ":"O","Ố":"O","Ỗ":"O","Ổ":"O","Õ":"O","Ṍ":"O","Ȭ":"O","Ṏ":"O","Ō":"O","Ṑ":"O","Ṓ":"O","Ŏ":"O","Ȯ":"O","Ȱ":"O","Ö":"O","Ȫ":"O","Ỏ":"O","Ő":"O","Ǒ":"O","Ȍ":"O","Ȏ":"O","Ơ":"O","Ờ":"O","Ớ":"O","Ỡ":"O","Ở":"O","Ợ":"O","Ọ":"O","Ộ":"O","Ǫ":"O","Ǭ":"O","Ø":"O","Ǿ":"O","Ɔ":"O","Ɵ":"O","Ꝋ":"O","Ꝍ":"O","Œ":"OE","Ƣ":"OI","Ꝏ":"OO","Ȣ":"OU","Ⓟ":"P","Ｐ":"P","Ṕ":"P","Ṗ":"P","Ƥ":"P","Ᵽ":"P","Ꝑ":"P","Ꝓ":"P","Ꝕ":"P","Ⓠ":"Q","Ｑ":"Q","Ꝗ":"Q","Ꝙ":"Q","Ɋ":"Q","Ⓡ":"R","Ｒ":"R","Ŕ":"R","Ṙ":"R","Ř":"R","Ȑ":"R","Ȓ":"R","Ṛ":"R","Ṝ":"R","Ŗ":"R","Ṟ":"R","Ɍ":"R","Ɽ":"R","Ꝛ":"R","Ꞧ":"R","Ꞃ":"R","Ⓢ":"S","Ｓ":"S","ẞ":"S","Ś":"S","Ṥ":"S","Ŝ":"S","Ṡ":"S","Š":"S","Ṧ":"S","Ṣ":"S","Ṩ":"S","Ș":"S","Ş":"S","Ȿ":"S","Ꞩ":"S","Ꞅ":"S","Ⓣ":"T","Ｔ":"T","Ṫ":"T","Ť":"T","Ṭ":"T","Ț":"T","Ţ":"T","Ṱ":"T","Ṯ":"T","Ŧ":"T","Ƭ":"T","Ʈ":"T","Ⱦ":"T","Ꞇ":"T","Þ":"Th","Ꜩ":"TZ","Ⓤ":"U","Ｕ":"U","Ù":"U","Ú":"U","Û":"U","Ũ":"U","Ṹ":"U","Ū":"U","Ṻ":"U","Ŭ":"U","Ü":"U","Ǜ":"U","Ǘ":"U","Ǖ":"U","Ǚ":"U","Ủ":"U","Ů":"U","Ű":"U","Ǔ":"U","Ȕ":"U","Ȗ":"U","Ư":"U","Ừ":"U","Ứ":"U","Ữ":"U","Ử":"U","Ự":"U","Ụ":"U","Ṳ":"U","Ų":"U","Ṷ":"U","Ṵ":"U","Ʉ":"U","Ⓥ":"V","Ｖ":"V","Ṽ":"V","Ṿ":"V","Ʋ":"V","Ꝟ":"V","Ʌ":"V","Ꝡ":"VY","Ⓦ":"W","Ｗ":"W","Ẁ":"W","Ẃ":"W","Ŵ":"W","Ẇ":"W","Ẅ":"W","Ẉ":"W","Ⱳ":"W","Ⓧ":"X","Ｘ":"X","Ẋ":"X","Ẍ":"X","Ⓨ":"Y","Ｙ":"Y","Ỳ":"Y","Ý":"Y","Ŷ":"Y","Ỹ":"Y","Ȳ":"Y","Ẏ":"Y","Ÿ":"Y","Ỷ":"Y","Ỵ":"Y","Ƴ":"Y","Ɏ":"Y","Ỿ":"Y","Ⓩ":"Z","Ｚ":"Z","Ź":"Z","Ẑ":"Z","Ż":"Z","Ž":"Z","Ẓ":"Z","Ẕ":"Z","Ƶ":"Z","Ȥ":"Z","Ɀ":"Z","Ⱬ":"Z","Ꝣ":"Z","ⓐ":"a","ａ":"a","ẚ":"a","à":"a","á":"a","â":"a","ầ":"a","ấ":"a","ẫ":"a","ẩ":"a","ã":"a","ā":"a","ă":"a","ằ":"a","ắ":"a","ẵ":"a","ẳ":"a","ȧ":"a","ǡ":"a","ä":"a","ǟ":"a","ả":"a","å":"a","ǻ":"a","ǎ":"a","ȁ":"a","ȃ":"a","ạ":"a","ậ":"a","ặ":"a","ḁ":"a","ą":"a","ⱥ":"a","ɐ":"a","ɑ":"a","ꜳ":"aa","æ":"ae","ǽ":"ae","ǣ":"ae","ꜵ":"ao","ꜷ":"au","ꜹ":"av","ꜻ":"av","ꜽ":"ay","ⓑ":"b","ｂ":"b","ḃ":"b","ḅ":"b","ḇ":"b","ƀ":"b","ƃ":"b","ɓ":"b","Ƃ":"b","ⓒ":"c","ć":"c","ĉ":"c","ċ":"c","č":"c","ç":"c","ḉ":"c","ƈ":"c","ȼ":"c","ꜿ":"c","ↄ":"c","C":"c","Ć":"c","Ĉ":"c","Ċ":"c","Č":"c","Ƈ":"c","Ȼ":"c","ⓓ":"d","ｄ":"d","ḋ":"d","ď":"d","ḍ":"d","ḑ":"d","ḓ":"d","ḏ":"d","đ":"d","ƌ":"d","ɖ":"d","ɗ":"d","Ƌ":"d","Ꮷ":"d","ԁ":"d","Ɦ":"d","ð":"dh","ǳ":"dz","ǆ":"dz","ⓔ":"e","ｅ":"e","è":"e","é":"e","ê":"e","ề":"e","ế":"e","ễ":"e","ể":"e","ẽ":"e","ē":"e","ḕ":"e","ḗ":"e","ĕ":"e","ė":"e","ë":"e","ẻ":"e","ě":"e","ȅ":"e","ȇ":"e","ẹ":"e","ệ":"e","ȩ":"e","ḝ":"e","ę":"e","ḙ":"e","ḛ":"e","ɇ":"e","ǝ":"e","ⓕ":"f","ｆ":"f","ḟ":"f","ƒ":"f","ﬀ":"ff","ﬁ":"fi","ﬂ":"fl","ﬃ":"ffi","ﬄ":"ffl","ⓖ":"g","ｇ":"g","ǵ":"g","ĝ":"g","ḡ":"g","ğ":"g","ġ":"g","ǧ":"g","ģ":"g","ǥ":"g","ɠ":"g","ꞡ":"g","ꝿ":"g","ᵹ":"g","ⓗ":"h","ｈ":"h","ĥ":"h","ḣ":"h","ḧ":"h","ȟ":"h","ḥ":"h","ḩ":"h","ḫ":"h","ẖ":"h","ħ":"h","ⱨ":"h","ⱶ":"h","ɥ":"h","ƕ":"hv","ⓘ":"i","ｉ":"i","ì":"i","í":"i","î":"i","ĩ":"i","ī":"i","ĭ":"i","ï":"i","ḯ":"i","ỉ":"i","ǐ":"i","ȉ":"i","ȋ":"i","ị":"i","į":"i","ḭ":"i","ɨ":"i","ı":"i","ⓙ":"j","ｊ":"j","ĵ":"j","ǰ":"j","ɉ":"j","ⓚ":"k","ｋ":"k","ḱ":"k","ǩ":"k","ḳ":"k","ķ":"k","ḵ":"k","ƙ":"k","ⱪ":"k","ꝁ":"k","ꝃ":"k","ꝅ":"k","ꞣ":"k","ⓛ":"l","ｌ":"l","ŀ":"l","ĺ":"l","ľ":"l","ḷ":"l","ḹ":"l","ļ":"l","ḽ":"l","ḻ":"l","ſ":"l","ł":"l","ƚ":"l","ɫ":"l","ⱡ":"l","ꝉ":"l","ꞁ":"l","ꝇ":"l","ɭ":"l","ǉ":"lj","ⓜ":"m","ｍ":"m","ḿ":"m","ṁ":"m","ṃ":"m","ɱ":"m","ɯ":"m","ⓝ":"n","ｎ":"n","ǹ":"n","ń":"n","ñ":"n","ṅ":"n","ň":"n","ṇ":"n","ņ":"n","ṋ":"n","ṉ":"n","ƞ":"n","ɲ":"n","ŉ":"n","ꞑ":"n","ꞥ":"n","ԉ":"n","ǌ":"nj","ⓞ":"o","ｏ":"o","ò":"o","ó":"o","ô":"o","ồ":"o","ố":"o","ỗ":"o","ổ":"o","õ":"o","ṍ":"o","ȭ":"o","ṏ":"o","ō":"o","ṑ":"o","ṓ":"o","ŏ":"o","ȯ":"o","ȱ":"o","ö":"o","ȫ":"o","ỏ":"o","ő":"o","ǒ":"o","ȍ":"o","ȏ":"o","ơ":"o","ờ":"o","ớ":"o","ỡ":"o","ở":"o","ợ":"o","ọ":"o","ộ":"o","ǫ":"o","ǭ":"o","ø":"o","ǿ":"o","ꝋ":"o","ꝍ":"o","ɵ":"o","ɔ":"o","ᴑ":"o","œ":"oe","ƣ":"oi","ꝏ":"oo","ȣ":"ou","ⓟ":"p","ｐ":"p","ṕ":"p","ṗ":"p","ƥ":"p","ᵽ":"p","ꝑ":"p","ꝓ":"p","ꝕ":"p","ρ":"p","ⓠ":"q","ｑ":"q","ɋ":"q","ꝗ":"q","ꝙ":"q","ⓡ":"r","ｒ":"r","ŕ":"r","ṙ":"r","ř":"r","ȑ":"r","ȓ":"r","ṛ":"r","ṝ":"r","ŗ":"r","ṟ":"r","ɍ":"r","ɽ":"r","ꝛ":"r","ꞧ":"r","ꞃ":"r","ⓢ":"s","ｓ":"s","ś":"s","ṥ":"s","ŝ":"s","ṡ":"s","š":"s","ṧ":"s","ṣ":"s","ṩ":"s","ș":"s","ş":"s","ȿ":"s","ꞩ":"s","ꞅ":"s","ẛ":"s","ʂ":"s","ß":"ss","ⓣ":"t","ｔ":"t","ṫ":"t","ẗ":"t","ť":"t","ṭ":"t","ț":"t","ţ":"t","ṱ":"t","ṯ":"t","ŧ":"t","ƭ":"t","ʈ":"t","ⱦ":"t","ꞇ":"t","þ":"th","ꜩ":"tz","ⓤ":"u","ｕ":"u","ù":"u","ú":"u","û":"u","ũ":"u","ṹ":"u","ū":"u","ṻ":"u","ŭ":"u","ü":"u","ǜ":"u","ǘ":"u","ǖ":"u","ǚ":"u","ủ":"u","ů":"u","ű":"u","ǔ":"u","ȕ":"u","ȗ":"u","ư":"u","ừ":"u","ứ":"u","ữ":"u","ử":"u","ự":"u","ụ":"u","ṳ":"u","ų":"u","ṷ":"u","ṵ":"u","ʉ":"u","ⓥ":"v","ｖ":"v","ṽ":"v","ṿ":"v","ʋ":"v","ꝟ":"v","ʌ":"v","ꝡ":"vy","ⓦ":"w","ｗ":"w","ẁ":"w","ẃ":"w","ŵ":"w","ẇ":"w","ẅ":"w","ẘ":"w","ẉ":"w","ⱳ":"w","ⓧ":"x","ｘ":"x","ẋ":"x","ẍ":"x","ⓨ":"y","ｙ":"y","ỳ":"y","ý":"y","ŷ":"y","ỹ":"y","ȳ":"y","ẏ":"y","ÿ":"y","ỷ":"y","ẙ":"y","ỵ":"y","ƴ":"y","ɏ":"y","ỿ":"y","ⓩ":"z","ｚ":"z","ź":"z","ẑ":"z","ż":"z","ž":"z","ẓ":"z","ẕ":"z","ƶ":"z","ȥ":"z","ɀ":"z","ⱬ":"z","ꝣ":"z"}
-},{}],25:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-var map = require( './latinize-map.json' ) ;
-
-module.exports = function( str )
-{
-	return str.replace( /[^\u0000-\u007e]/g , function( c ) { return map[ c ] || c ; } ) ;
-} ;
-
-            
-
-},{"./latinize-map.json":24}],26:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-/* All polyfill borrowed from MDN: developer.mozilla.org */
-
-
-
-var polyfill = {} ;
-module.exports = polyfill ;
-
-
-
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/repeat
-polyfill.repeat = function(count)
-{
-  if (this === null) {
-    throw new TypeError('can\'t convert ' + this + ' to object');
-  }
-  var str = '' + this;
-  count = +count;
-  if (count !== count) {
-    count = 0;
-  }
-  if (count < 0) {
-    throw new RangeError('repeat count must be non-negative');
-  }
-  if (count === Infinity) {
-    throw new RangeError('repeat count must be less than infinity');
-  }
-  count = Math.floor(count);
-  if (str.length === 0 || count === 0) {
-    return '';
-  }
-  // Ensuring count is a 31-bit integer allows us to heavily optimize the
-  // main part. But anyway, most current (August 2014) browsers can't handle
-  // strings 1 << 28 chars or longer, so:
-  if (str.length * count >= 1 << 28) {
-    throw new RangeError('repeat count must not overflow maximum string size');
-  }
-  var rpt = '';
-  for (;;) {
-    if ((count & 1) === 1) {
-      rpt += str;
-    }
-    count >>>= 1;
-    if (count === 0) {
-      break;
-    }
-    str += str;
-  }
-  return rpt;
-} ;
-
-
-
-},{}],27:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-var escape = require( './escape.js' ) ;
-
-
-
-exports.regexp = {} ;
-
-
-
-exports.regexp.array2alternatives = function array2alternatives( array )
-{
-	var i , sorted = array.slice() ;
-	
-	// Sort descending by string length
-	sorted.sort( function( a , b ) {
-		return b.length - a.length ;
-	} ) ;
-	
-	// Then escape what should be
-	for ( i = 0 ; i < sorted.length ; i ++ )
-	{
-		sorted[ i ] = escape.regExpPattern( sorted[ i ] ) ;
-	}
-	
-	return sorted.join( '|' ) ;
-} ;
-
-
-
-},{"./escape.js":21}],28:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-// Load modules
-var tree = require( 'tree-kit' ) ;
-
-
-
-var stringKit = {} ;
-module.exports = stringKit ;
-
-
-
-// Tier 0: add polyfills to stringKit
-var fn ;
-var polyfill = require( './polyfill.js' ) ;
-
-for ( fn in polyfill )
-{
-	stringKit[ fn ] = function( string ) { // jshint ignore:line
-		return polyfill[ fn ].apply( string , Array.prototype.slice.call( arguments , 1 ) ) ;
-	} ; // jshint ignore:line
-}
-
-
-
-tree.extend( null , stringKit ,
-	
-	// Tier 1
-	{ escape: require( './escape.js' ) } ,
-	{ ansi: require( './ansi.js' ) } ,
-	{ unicode: require( './unicode.js' ) }
-) ;
-
-
-
-tree.extend( null , stringKit ,
-	
-	// Tier 2
-	require( './format.js' ) ,
-	
-	// Tier 3
-	require( './inspect.js' ) ,
-	require( './regexp.js' ) ,
-	require( './camel.js' ) ,
-	{ latinize: require( './latinize.js' ) }
-) ;
-
-
-
-// Install all polyfill into String.prototype
-stringKit.installPolyfills = function installPolyfills()
-{
-	var fn ;
-	
-	for ( fn in polyfill )
-	{
-		if ( ! String.prototype[ fn ] )
-		{
-			String.prototype[ fn ] = polyfill[ fn ] ;
-		}
-	}
-} ;
-
-
-
-
-
-},{"./ansi.js":19,"./camel.js":20,"./escape.js":21,"./format.js":22,"./inspect.js":23,"./latinize.js":25,"./polyfill.js":26,"./regexp.js":27,"./unicode.js":29,"tree-kit":36}],29:[function(require,module,exports){
-/*
-	String Kit
-	
-	Copyright (c) 2014 - 2016 Cédric Ronvel
-	
-	The MIT License (MIT)
-	
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-	
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-	
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-/*
-	Javascript does not use UTF-8 but UCS-2.
-	The purpose of this module is to process correctly strings containing UTF-8 characters that take more than 2 bytes.
-	
-	Note: in monospace font, any single unicode character that has a length of 2 is a full-width char, and therefore
-	is displayed in 2 monospace cells.
-*/
-
-
-
-// Load modules
-var punycode = require( 'punycode' ) ;
-
-
-
-// Create the module and export it
-var unicode = {} ;
-module.exports = unicode ;
-
-
-
-// Get the length of an unicode string
-unicode.length = function length( str )
-{
-	return punycode.ucs2.decode( str ).length ;
-} ;
-
-
-
-// Return an array of chars
-unicode.toArray = function toArray( str )
-{
-	return punycode.ucs2.decode( str ).map( function( code ) {
-		return punycode.ucs2.encode( [ code ] ) ;
-	} ) ;
-} ;
-
-
-
-/*
-	Returns:
-		0: single char
-		1: leading surrogate
-		-1: trailing surrogate
-	
-	Note: it does not check input, to gain perfs.
-*/
-unicode.surrogatePair = function surrogatePair( char )
-{
-	var code = char.charCodeAt( 0 ) ;
-	
-	if ( code < 0xd800 || code >= 0xe000 ) { return 0 ; }
-	else if ( code < 0xdc00 ) { return 1 ; }
-	else { return -1 ; }
-} ;
-
-
-
-/*
-	Check if a character is a full-width char or not.
-	
-	Borrowed from Node.js source, from readline.js.
-*/
-unicode.isFullWidth = function isFullWidth( char )
-{
-	var code = char.codePointAt( 0 ) ;
-	
-	// Code points are derived from:
-	// http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
-	if ( code >= 0x1100 && (
-			code <= 0x115f ||	// Hangul Jamo
-			0x2329 === code || // LEFT-POINTING ANGLE BRACKET
-			0x232a === code || // RIGHT-POINTING ANGLE BRACKET
-			// CJK Radicals Supplement .. Enclosed CJK Letters and Months
-			( 0x2e80 <= code && code <= 0x3247 && code !== 0x303f ) ||
-			// Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
-			0x3250 <= code && code <= 0x4dbf ||
-			// CJK Unified Ideographs .. Yi Radicals
-			0x4e00 <= code && code <= 0xa4c6 ||
-			// Hangul Jamo Extended-A
-			0xa960 <= code && code <= 0xa97c ||
-			// Hangul Syllables
-			0xac00 <= code && code <= 0xd7a3 ||
-			// CJK Compatibility Ideographs
-			0xf900 <= code && code <= 0xfaff ||
-			// Vertical Forms
-			0xfe10 <= code && code <= 0xfe19 ||
-			// CJK Compatibility Forms .. Small Form Variants
-			0xfe30 <= code && code <= 0xfe6b ||
-			// Halfwidth and Fullwidth Forms
-			0xff01 <= code && code <= 0xff60 ||
-			0xffe0 <= code && code <= 0xffe6 ||
-			// Kana Supplement
-			0x1b000 <= code && code <= 0x1b001 ||
-			// Enclosed Ideographic Supplement
-			0x1f200 <= code && code <= 0x1f251 ||
-			// CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
-			0x20000 <= code && code <= 0x3fffd ) ) {
-		return true ;
-	}
-	
-	return false ;
-} ;
-
-
-
-// Convert normal ASCII chars to their full-width counterpart
-unicode.toFullWidth = function toFullWidth( str )
-{
-	return punycode.ucs2.encode( 
-		punycode.ucs2.decode( str ).map( function( code ) {
-			if ( code >= 33 && code <= 126 ) { return 0xff00 + code - 0x20 ; }
-			else { return code ; }
-		} )
-	) ;
-} ;
-
-
-
-},{"punycode":15}],30:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK object tree toolbox
-
-	Copyright (c) 2014 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-/*
-	Stand-alone fork of extend.js, without options.
-*/
-
-exports.clone = function clone( originalObject , circular )
-{
-	// First create an empty object with
-	// same prototype of our original source
-	
-	var propertyIndex , descriptor , keys , current , nextSource , indexOf ,
-		copies = [ { source: originalObject , target: Object.create( Object.getPrototypeOf( originalObject ) ) } ] ,
-		cloneObject = copies[ 0 ].target ,
-		sourceReferences = [ originalObject ] ,
-		targetReferences = [ cloneObject ] ;
-	
-	// First in, first out
-	while ( current = copies.shift() )	// jshint ignore:line
-	{
-		keys = Object.getOwnPropertyNames( current.source ) ;
-
-		for ( propertyIndex = 0 ; propertyIndex < keys.length ; propertyIndex ++ )
-		{
-			// Save the source's descriptor
-			descriptor = Object.getOwnPropertyDescriptor( current.source , keys[ propertyIndex ] ) ;
-			
-			if ( ! descriptor.value || typeof descriptor.value !== 'object' )
-			{
-				Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
-				continue ;
-			}
-			
-			nextSource = descriptor.value ;
-			descriptor.value = Array.isArray( nextSource ) ? [] : Object.create( Object.getPrototypeOf( nextSource ) ) ;
-			
-			if ( circular )
-			{
-				indexOf = sourceReferences.indexOf( nextSource ) ;
-				
-				if ( indexOf !== -1 )
-				{
-					// The source is already referenced, just assign reference
-					descriptor.value = targetReferences[ indexOf ] ;
-					Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
-					continue ;
-				}
-				
-				sourceReferences.push( nextSource ) ;
-				targetReferences.push( descriptor.value ) ;
-			}
-			
-			Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
-			
-			copies.push( { source: nextSource , target: descriptor.value } ) ;
-		}
-	}
-	
-	return cloneObject ;
-} ;
-
-},{}],31:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK object tree toolbox
-
-	Copyright (c) 2014 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-/*
-	== Diff function ==
-*/
-
-function diff( left , right , options )
-{
-	var i , key , keyPath ,
-		leftKeys , rightKeys , leftTypeof , rightTypeof ,
-		depth , diffObject , length , arrayMode ;
-	
-	leftTypeof = typeof left ;
-	rightTypeof = typeof right ;
-	
-	if (
-		! left || ( leftTypeof !== 'object' && leftTypeof !== 'function' ) ||
-		! right || ( rightTypeof !== 'object' && rightTypeof !== 'function' )
-	)
-	{
-		throw new Error( '[tree] diff() needs objects as argument #0 and #1' ) ;
-	}
-	
-	if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
-	depth = options.depth || 0 ;
-	
-	// Things applied only for the root, not for recursive call
-	if ( ! depth )
-	{
-		options.diffObject = {} ;
-		if ( ! options.path ) { options.path = '' ; }
-		if ( ! options.pathSeparator ) { options.pathSeparator = '.' ; }
-	}
-	
-	diffObject = options.diffObject ;
-	
-	
-	// Left part
-	if ( Array.isArray( left ) )
-	{
-		arrayMode = true ;
-		length = left.length ;
-	}
-	else
-	{
-		arrayMode = false ;
-		leftKeys = Object.keys( left ) ;
-		length = leftKeys.length ;
-	}
-	
-	for ( i = 0 ; i < length ; i ++ )
-	{
-		key = arrayMode ? i : leftKeys[ i ] ;
-		keyPath = options.path + options.pathSeparator + key ;
-		//console.log( 'L keyPath:' , keyPath ) ;
-		
-		if ( ! right.hasOwnProperty( key ) )
-		{
-			diffObject[ keyPath ] = { path: keyPath , message: 'does not exist in right-hand side' } ;
-			continue ;
-		}
-		
-		leftTypeof = typeof left[ key ] ;
-		rightTypeof = typeof right[ key ] ;
-		
-		if ( leftTypeof !== rightTypeof )
-		{
-			diffObject[ keyPath ] = { path: keyPath , message: 'different typeof: ' + leftTypeof + ' - ' + rightTypeof } ;
-			continue ;
-		}
-		
-		if ( leftTypeof === 'object' || leftTypeof === 'function' )
-		{
-			// Cleanup the 'null is an object' mess
-			if ( ! left[ key ] )
-			{
-				if ( right[ key ] ) { diffObject[ keyPath ] = { path: keyPath , message: 'different type: null - Object' } ; }
-				continue ;
-			}
-			
-			if ( ! right[ key ] )
-			{
-				diffObject[ keyPath ] = { path: keyPath , message: 'different type: Object - null' } ;
-				continue ;
-			}
-			
-			if ( Array.isArray( left[ key ] ) && ! Array.isArray( right[ key ] ) )
-			{
-				diffObject[ keyPath ] = { path: keyPath , message: 'different type: Array - Object' } ;
-				continue ;
-			}
-			
-			if ( ! Array.isArray( left[ key ] ) && Array.isArray( right[ key ] ) )
-			{
-				diffObject[ keyPath ] = { path: keyPath , message: 'different type: Object - Array' } ;
-				continue ;
-			}
-			
-			diff( left[ key ] , right[ key ] , { path: keyPath , pathSeparator: options.pathSeparator , depth: depth + 1 , diffObject: diffObject } ) ;
-			continue ;
-		}
-		
-		if ( left[ key ] !== right[ key ] )
-		{
-			diffObject[ keyPath ] = { path: keyPath , message: 'different value: ' + left[ key ] + ' - ' + right[ key ] } ;
-			continue ;
-		}
-	}
-	
-	
-	// Right part
-	if ( Array.isArray( right ) )
-	{
-		arrayMode = true ;
-		length = right.length ;
-	}
-	else
-	{
-		arrayMode = false ;
-		rightKeys = Object.keys( right ) ;
-		length = rightKeys.length ;
-	}
-	
-	for ( i = 0 ; i < length ; i ++ )
-	{
-		key = arrayMode ? i : rightKeys[ i ] ;
-		keyPath = options.path + options.pathSeparator + key ;
-		//console.log( 'R keyPath:' , keyPath ) ;
-		
-		if ( ! left.hasOwnProperty( key ) )
-		{
-			diffObject[ keyPath ] = { path: keyPath , message: 'does not exist in left-hand side' } ;
-			continue ;
-		}
-	}
-	
-	return Object.keys( diffObject ).length ? diffObject : null ;
-}
-
-
-
-exports.diff = diff ;
-
-
-
-
-},{}],32:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK object tree toolbox
-
-	Copyright (c) 2014, 2015 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-/*
-	== Extend function ==
-*/
-
-/*
-	options:
-		* own: only copy own properties that are enumerable
-		* nonEnum: copy non-enumerable properties as well, works only with own:true
-		* descriptor: preserve property's descriptor
-		* deep: perform a deep (recursive) extend
-		* maxDepth: used in conjunction with deep, when max depth is reached an exception is raised, default to 100 when
-			the 'circular' option is off, or default to null if 'circular' is on
-		* circular: circular references reconnection
-		* move: move properties to target (delete properties from the sources)
-		* preserve: existing properties in the target object are not overwritten
-		* nofunc: skip functions
-		* deepFunc: in conjunction with 'deep', this will process sources functions like objects rather than
-			copying/referencing them directly into the source, thus, the result will not be a function, it forces 'deep'
-		* proto: try to clone objects with the right prototype, using Object.create() or mutating it with __proto__,
-			it forces option 'own'.
-		* inherit: rather than mutating target prototype for source prototype like the 'proto' option does, here it is
-			the source itself that IS the prototype for the target. Force option 'own' and disable 'proto'.
-		* skipRoot: the prototype of the target root object is NOT mutated only if this option is set.
-		* flat: extend into the target top-level only, compose name with the path of the source, force 'deep',
-			disable 'unflat', 'proto', 'inherit'
-		* unflat: assume sources are in the 'flat' format, expand all properties deeply into the target, disable 'flat'
-		* deepFilter
-			* blacklist: list of black-listed prototype: the recursiveness of the 'deep' option will be disabled
-				for object whose prototype is listed
-			* whitelist: the opposite of blacklist
-*/
-function extend( runtime , options , target )
-{
-	var i , j , jmax , source , sourceKeys , sourceKey , sourceValue ,
-		value , sourceDescriptor , targetKey , targetPointer , path ,
-		indexOfSource = -1 , newTarget = false , length = arguments.length ;
-	
-	if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
-	// Things applied only for the first call, not for recursive call
-	if ( ! runtime )
-	{
-		runtime = { depth: 0 , prefix: '' } ;
-		
-		if ( ! options.maxDepth && options.deep && ! options.circular ) { options.maxDepth = 100 ; }
-		
-		if ( options.deepFunc ) { options.deep = true ; }
-		
-		if ( options.deepFilter && typeof options.deepFilter === 'object' )
-		{
-			if ( options.deepFilter.whitelist && ( ! Array.isArray( options.deepFilter.whitelist ) || ! options.deepFilter.whitelist.length ) ) { delete options.deepFilter.whitelist ; }
-			if ( options.deepFilter.blacklist && ( ! Array.isArray( options.deepFilter.blacklist ) || ! options.deepFilter.blacklist.length ) ) { delete options.deepFilter.blacklist ; }
-			if ( ! options.deepFilter.whitelist && ! options.deepFilter.blacklist ) { delete options.deepFilter ; }
-		}
-		
-		// 'flat' option force 'deep'
-		if ( options.flat )
-		{
-			options.deep = true ;
-			options.proto = false ;
-			options.inherit = false ;
-			options.unflat = false ;
-			if ( typeof options.flat !== 'string' ) { options.flat = '.' ; }
-		}
-		
-		if ( options.unflat )
-		{
-			options.deep = false ;
-			options.proto = false ;
-			options.inherit = false ;
-			options.flat = false ;
-			if ( typeof options.unflat !== 'string' ) { options.unflat = '.' ; }
-		}
-		
-		// If the prototype is applied, only owned properties should be copied
-		if ( options.inherit ) { options.own = true ; options.proto = false ; }
-		else if ( options.proto ) { options.own = true ; }
-		
-		if ( ! target || ( typeof target !== 'object' && typeof target !== 'function' ) )
-		{
-			newTarget = true ;
-		}
-		
-		if ( ! options.skipRoot && ( options.inherit || options.proto ) )
-		{
-			for ( i = length - 1 ; i >= 3 ; i -- )
-			{
-				source = arguments[ i ] ;
-				if ( source && ( typeof source === 'object' || typeof source === 'function' ) )
-				{
-					if ( options.inherit )
-					{
-						if ( newTarget ) { target = Object.create( source ) ; }
-						else { target.__proto__ = source ; }	// jshint ignore:line
-					}
-					else if ( options.proto )
-					{
-						if ( newTarget ) { target = Object.create( source.__proto__ ) ; }	// jshint ignore:line
-						else { target.__proto__ = source.__proto__ ; }	// jshint ignore:line
-					}
-					
-					break ;
-				}
-			}
-		}
-		else if ( newTarget )
-		{
-			target = {} ;
-		}
-		
-		runtime.references = { sources: [] , targets: [] } ;
-	}
-	
-	
-	// Max depth check
-	if ( options.maxDepth && runtime.depth > options.maxDepth )
-	{
-		throw new Error( '[tree] extend(): max depth reached(' + options.maxDepth + ')' ) ;
-	}
-	
-	
-	// Real extend processing part
-	for ( i = 3 ; i < length ; i ++ )
-	{
-		source = arguments[ i ] ;
-		if ( ! source || ( typeof source !== 'object' && typeof source !== 'function' ) ) { continue ; }
-		
-		if ( options.circular )
-		{
-			runtime.references.sources.push( source ) ;
-			runtime.references.targets.push( target ) ;
-		}
-		
-		if ( options.own )
-		{
-			if ( options.nonEnum ) { sourceKeys = Object.getOwnPropertyNames( source ) ; }
-			else { sourceKeys = Object.keys( source ) ; }
-		}
-		else { sourceKeys = source ; }
-		
-		for ( sourceKey in sourceKeys )
-		{
-			if ( options.own ) { sourceKey = sourceKeys[ sourceKey ] ; }
-			
-			// If descriptor is on, get it now
-			if ( options.descriptor )
-			{
-				sourceDescriptor = Object.getOwnPropertyDescriptor( source , sourceKey ) ;
-				sourceValue = sourceDescriptor.value ;
-			}
-			else
-			{
-				// We have to trigger an eventual getter only once
-				sourceValue = source[ sourceKey ] ;
-			}
-			
-			targetPointer = target ;
-			targetKey = runtime.prefix + sourceKey ;
-			
-			// Do not copy if property is a function and we don't want them
-			if ( options.nofunc && typeof sourceValue === 'function' ) { continue; }
-			
-			// 'unflat' mode computing
-			if ( options.unflat && runtime.depth === 0 )
-			{
-				path = sourceKey.split( options.unflat ) ;
-				jmax = path.length - 1 ;
-				
-				if ( jmax )
-				{
-					for ( j = 0 ; j < jmax ; j ++ )
-					{
-						if ( ! targetPointer[ path[ j ] ] ||
-							( typeof targetPointer[ path[ j ] ] !== 'object' &&
-								typeof targetPointer[ path[ j ] ] !== 'function' ) )
-						{
-							targetPointer[ path[ j ] ] = {} ;
-						}
-						
-						targetPointer = targetPointer[ path[ j ] ] ;
-					}
-					
-					targetKey = runtime.prefix + path[ jmax ] ;
-				}
-			}
-			
-			
-			if ( options.deep &&
-				sourceValue &&
-				( typeof sourceValue === 'object' || ( options.deepFunc && typeof sourceValue === 'function' ) ) &&
-				( ! options.descriptor || ! sourceDescriptor.get ) &&
-				( ! options.deepFilter ||
-					( ( ! options.deepFilter.whitelist || options.deepFilter.whitelist.indexOf( sourceValue.__proto__ ) !== -1 ) &&	// jshint ignore:line
-						( ! options.deepFilter.blacklist || options.deepFilter.blacklist.indexOf( sourceValue.__proto__ ) === -1 ) ) ) ) // jshint ignore:line
-			{
-				if ( options.circular )
-				{
-					indexOfSource = runtime.references.sources.indexOf( sourceValue ) ;
-				}
-				
-				if ( options.flat )
-				{
-					// No circular references reconnection when in 'flat' mode
-					if ( indexOfSource >= 0 ) { continue ; }
-					
-					extend(
-						{ depth: runtime.depth + 1 , prefix: runtime.prefix + sourceKey + options.flat , references: runtime.references } ,
-						options , targetPointer , sourceValue
-					) ;
-				}
-				else
-				{
-					if ( indexOfSource >= 0 )
-					{
-						// Circular references reconnection...
-						if ( options.descriptor )
-						{
-							Object.defineProperty( targetPointer , targetKey , {
-								value: runtime.references.targets[ indexOfSource ] ,
-								enumerable: sourceDescriptor.enumerable ,
-								writable: sourceDescriptor.writable ,
-								configurable: sourceDescriptor.configurable
-							} ) ;
-						}
-						else
-						{
-							targetPointer[ targetKey ] = runtime.references.targets[ indexOfSource ] ;
-						}
-						
-						continue ;
-					}
-					
-					if ( ! targetPointer[ targetKey ] || ! targetPointer.hasOwnProperty( targetKey ) || ( typeof targetPointer[ targetKey ] !== 'object' && typeof targetPointer[ targetKey ] !== 'function' ) )
-					{
-						if ( Array.isArray( sourceValue ) ) { value = [] ; }
-						else if ( options.proto ) { value = Object.create( sourceValue.__proto__ ) ; }	// jshint ignore:line
-						else if ( options.inherit ) { value = Object.create( sourceValue ) ; }
-						else { value = {} ; }
-						
-						if ( options.descriptor )
-						{
-							Object.defineProperty( targetPointer , targetKey , {
-								value: value ,
-								enumerable: sourceDescriptor.enumerable ,
-								writable: sourceDescriptor.writable ,
-								configurable: sourceDescriptor.configurable
-							} ) ;
-						}
-						else
-						{
-							targetPointer[ targetKey ] = value ;
-						}
-					}
-					else if ( options.proto && targetPointer[ targetKey ].__proto__ !== sourceValue.__proto__ )	// jshint ignore:line
-					{
-						targetPointer[ targetKey ].__proto__ = sourceValue.__proto__ ;	// jshint ignore:line
-					}
-					else if ( options.inherit && targetPointer[ targetKey ].__proto__ !== sourceValue )	// jshint ignore:line
-					{
-						targetPointer[ targetKey ].__proto__ = sourceValue ;	// jshint ignore:line
-					}
-					
-					if ( options.circular )
-					{
-						runtime.references.sources.push( sourceValue ) ;
-						runtime.references.targets.push( targetPointer[ targetKey ] ) ;
-					}
-					
-					// Recursively extends sub-object
-					extend(
-						{ depth: runtime.depth + 1 , prefix: '' , references: runtime.references } ,
-						options , targetPointer[ targetKey ] , sourceValue
-					) ;
-				}
-			}
-			else if ( options.preserve && targetPointer[ targetKey ] !== undefined )
-			{
-				// Do not overwrite, and so do not delete source's properties that were not moved
-				continue ;
-			}
-			else if ( ! options.inherit )
-			{
-				if ( options.descriptor ) { Object.defineProperty( targetPointer , targetKey , sourceDescriptor ) ; }
-				else { targetPointer[ targetKey ] = sourceValue ; }
-			}
-			
-			// Delete owned property of the source object
-			if ( options.move ) { delete source[ sourceKey ] ; }
-		}
-	}
-	
-	return target ;
-}
-
-
-
-// The extend() method as publicly exposed
-module.exports = extend.bind( undefined , null ) ;
-
-
-
-},{}],33:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK object tree toolbox
-
-	Copyright (c) 2014 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-/*
-	== Lazy function ==
-*/
-
-exports.defineLazyProperty = function defineLazyProperty( object , name , func )
-{
-	Object.defineProperty( object , name , {
-		configurable: true ,
-		enumerable: true ,
-		get: function() {
-			
-			var value = func() ;
-			
-			Object.defineProperty( object , name , {
-				configurable: true ,
-				enumerable: true ,
-				writable: false ,
-				value: value
-			} ) ;
-			
-			return value ;
-		}
-	} ) ;
-} ;
-
-},{}],34:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK object tree toolbox
-
-	Copyright (c) 2014 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-// Load modules
-var tree = require( './tree.js' ) ;
-var util = require( 'util' ) ;
-
-
-
-// Create and export
-var masklib = {} ;
-module.exports = masklib ;
-
-
-
-/*
-	== Mask-family class ==
-	
-	Recursively select values in the input object if the same path in the mask object is set.
-*/
-
-/*
-	TODO:
-	- negative mask
-	- constraint check
-	- Maskable object, like in csk-php
-*/
-
-masklib.Mask = function Mask()
-{
-	throw new Error( 'Cannot create a tree.Mask() directly' ) ;
-} ;
-
-
-
-var maskDefaultOptions = {
-	clone: false ,
-	path: '<object>' ,
-	pathSeparator: '.'
-} ;
-
-
-
-/*
-	options:
-		clone: the output clone the input rather than reference it
-		pathSeperator: when expressing path, this is the separator
-		leaf: a callback to exec for each mask leaf
-		node? a callback to exec for each mask node
-*/
-masklib.createMask = function createMask( maskArgument , options )
-{
-	if ( maskArgument === null || typeof maskArgument !== 'object' )
-	{
-		throw new TypeError( '[tree] .createMask() : Argument #1 should be an object' ) ;
-	}
-	
-	if ( options !== null && typeof options === 'object' ) { options = tree.extend( null , {} , maskDefaultOptions , options ) ; }
-	else { options = maskDefaultOptions ; }
-	
-	var mask = Object.create( masklib.Mask.prototype , {
-		__options__: { value: options , writable: true  }
-	} ) ;
-	
-	tree.extend( null , mask , maskArgument ) ;
-	
-	return mask ;
-} ;
-
-
-
-// Apply the mask to an input tree
-masklib.Mask.prototype.applyTo = function applyTo( input , context , contextOverideDefault )
-{
-	// Arguments checking
-	if ( input === null || typeof input !== 'object' )
-	{
-		throw new TypeError( '[tree] .applyTo() : Argument #1 should be an object' ) ;
-	}
-	
-	if ( contextOverideDefault )
-	{
-		context = tree.extend( null ,
-			{
-				mask: this ,
-				options: this.__options__ ,
-				path: this.__options__.path
-			} ,
-			context
-		) ;
-	}
-	else if ( context === undefined )
-	{
-		context = {
-			mask: this ,
-			options: this.__options__ ,
-			path: this.__options__.path
-		} ;
-	}
-	
-	
-	// Init
-	//console.log( context ) ;
-	var result , nextPath , output ,
-		i , key , maskValue ,
-		maskKeyList = Object.keys( context.mask ) ,
-		j , inputKey , inputValue , inputKeyList ;
-	
-	if ( Array.isArray( input ) ) { output = [] ; }
-	else { output = {} ; }
-	
-	
-	// Iterate through mask properties
-	for ( i = 0 ; i < maskKeyList.length ; i ++ )
-	{
-		key = maskKeyList[ i ] ;
-		maskValue = context.mask[ key ] ;
-		
-		//console.log( '\nnext loop: ' , key , maskValue ) ;
-		
-		// The special key * is a wildcard, it match everything
-		if ( key === '*' )
-		{
-			//console.log( 'wildcard' ) ;
-			inputKeyList = Object.keys( input ) ;
-			
-			for ( j = 0 ; j < inputKeyList.length ; j ++ )
-			{
-				inputKey = inputKeyList[ j ] ;
-				inputValue = input[ inputKey ] ;
-				
-				//console.log( '*: ' , inputKey ) ;
-				nextPath = context.path + context.options.pathSeparator + inputKey ;
-				
-				// If it is an array or object, recursively check it
-				if ( maskValue !== null && typeof maskValue === 'object' )
-				{
-					if ( input[ inputKey ] !== null && typeof input[ inputKey ] === 'object' )
-					{
-						if ( input[ inputKey ] instanceof masklib.Mask )
-						{
-							output[ inputKey ] = input[ inputKey ].applyTo( input[ inputKey ] , { path: nextPath } , true ) ;
-						}
-						else
-						{
-							output[ inputKey ] = this.applyTo( input[ inputKey ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
-						}
-					}
-					else if ( typeof context.options.leaf === 'function' )
-					{
-						output[ inputKey ] = this.applyTo( {} , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
-					}
-				}
-				else if ( maskValue !== null && typeof context.options.leaf === 'function' )
-				{
-					//console.log( 'leaf callback' ) ;
-					result = context.options.leaf( input , inputKey , maskValue , nextPath ) ;
-					if ( ! ( result instanceof Error ) ) { output[ inputKey ] = result ; }
-				}
-				else
-				{
-					if ( context.options.clone && ( input[ inputKey ] !== null && typeof input[ inputKey ] === 'object' ) )
-					{
-						output[ inputKey ] = tree.extend( { deep: true } , {} , input[ inputKey ] ) ;
-					}
-					else
-					{
-						output[ inputKey ] = input[ inputKey ] ;
-					}
-				}
-			}
-			
-			continue ;
-		}
-		
-		
-		nextPath = context.path + context.options.pathSeparator + key ;
-		
-		// If it is an object, recursively check it
-		//if ( maskValue instanceof masklib.Mask )
-		if ( maskValue !== null && typeof maskValue === 'object' )
-		{
-			//console.log( 'sub' ) ;
-			
-			if ( input.hasOwnProperty( key ) && input[ key ] !== null && typeof input[ key ] === 'object' )
-			{
-				//console.log( 'recursive call' ) ;
-				
-				if ( input.key instanceof masklib.Mask )
-				{
-					output[ key ] = input.key.applyTo( input[ key ] , { path: nextPath } , true ) ;
-				}
-				else
-				{
-					output[ key ] = this.applyTo( input[ key ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
-				}
-			}
-			// recursive call only if there are callback
-			else if ( context.options.leaf )
-			{
-				//console.log( 'recursive call' ) ;
-				output[ key ] = this.applyTo( {} , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
-			}
-		}
-		// If mask exists, add the key
-		else if ( input.hasOwnProperty( key ) )
-		{
-			//console.log( 'property found' ) ;
-			
-			if ( maskValue !== undefined && typeof context.options.leaf === 'function' )
-			{
-				//console.log( 'leaf callback' ) ;
-				result = context.options.leaf( input , key , maskValue , nextPath ) ;
-				if ( ! ( result instanceof Error ) ) { output[ key ] = result ; }
-			}
-			else
-			{
-				if ( context.options.clone && ( input[ key ] !== null && typeof input[ key ] === 'object' ) )
-				{
-					output[ key ] = tree.extend( { deep: true } , {} , input[ key ] ) ;
-				}
-				else
-				{
-					output[ key ] = input[ key ] ;
-				}
-			}
-		}
-		else if ( maskValue !== undefined && typeof context.options.leaf === 'function' )
-		{
-			//console.log( 'leaf callback' ) ;
-			result = context.options.leaf( input , key , maskValue , nextPath ) ;
-			if ( ! ( result instanceof Error ) ) { output[ key ] = result ; }
-		}
-	}
-	
-	return output ;
-} ;
-
-
-
-// InverseMask: create an output tree from the input, by excluding properties of the mask
-
-masklib.InverseMask = function InverseMask()
-{
-	throw new Error( 'Cannot create a tree.InverseMask() directly' ) ;
-} ;
-
-util.inherits( masklib.InverseMask , masklib.Mask ) ;
-
-
-
-/*
-	options:
-		clone: the output clone the input rather than reference it
-		pathSeperator: when expressing path, this is the separator
-*/
-masklib.createInverseMask = function createInverseMask( maskArgument , options )
-{
-	if ( maskArgument === null || typeof maskArgument !== 'object' )
-	{
-		throw new TypeError( '[tree] .createInverseMask() : Argument #1 should be an object' ) ;
-	}
-	
-	if ( options !== null && typeof options === 'object' ) { options = tree.extend( null , {} , maskDefaultOptions , options ) ; }
-	else { options = maskDefaultOptions ; }
-	
-	var mask = Object.create( masklib.InverseMask.prototype , {
-		__options__: { value: options , writable: true  }
-	} ) ;
-	
-	tree.extend( null , mask , maskArgument ) ;
-	
-	return mask ;
-} ;
-
-
-
-// Apply the mask to an input tree
-masklib.InverseMask.prototype.applyTo = function applyTo( input , context , contextOverideDefault )
-{
-	// Arguments checking
-	if ( input === null || typeof input !== 'object' )
-	{
-		throw new TypeError( '[tree] .applyTo() : Argument #1 should be an object' ) ;
-	}
-	
-	if ( contextOverideDefault )
-	{
-		context = tree.extend( null ,
-			{
-				mask: this ,
-				options: this.__options__ ,
-				path: this.__options__.path
-			} ,
-			context
-		) ;
-	}
-	else if ( context === undefined )
-	{
-		context = {
-			mask: this ,
-			options: this.__options__ ,
-			path: this.__options__.path
-		} ;
-	}
-	
-	
-	// Init
-	//console.log( context ) ;
-	var nextPath , output ,
-		i , key , maskValue ,
-		maskKeyList = Object.keys( context.mask ) ,
-		j , inputKey , inputValue , inputKeyList ;
-	
-	if ( Array.isArray( input ) ) { output = tree.extend( { deep: true } , [] , input ) ; }
-	else { output = tree.extend( { deep: true } , {} , input ) ; }
-	
-	//console.log( output ) ;
-	
-	// Iterate through mask properties
-	for ( i = 0 ; i < maskKeyList.length ; i ++ )
-	{
-		key = maskKeyList[ i ] ;
-		maskValue = context.mask[ key ] ;
-		
-		//console.log( '\nnext loop: ' , key , maskValue ) ;
-		
-		// The special key * is a wildcard, it match everything
-		if ( key === '*' )
-		{
-			//console.log( 'wildcard' ) ;
-			inputKeyList = Object.keys( input ) ;
-			
-			for ( j = 0 ; j < inputKeyList.length ; j ++ )
-			{
-				inputKey = inputKeyList[ j ] ;
-				inputValue = input[ inputKey ] ;
-				
-				//console.log( '*: ' , inputKey ) ;
-				nextPath = context.path + context.options.pathSeparator + inputKey ;
-				
-				// If it is an array or object, recursively check it
-				if ( maskValue !== null && typeof maskValue === 'object' )
-				{
-					if ( input[ inputKey ] !== null && typeof input[ inputKey ] === 'object' )
-					{
-						if ( input[ inputKey ] instanceof masklib.Mask )
-						{
-							output[ inputKey ] = input[ inputKey ].applyTo( input[ inputKey ] , { path: nextPath } , true ) ;
-						}
-						else
-						{
-							output[ inputKey ] = this.applyTo( input[ inputKey ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
-						}
-					}
-				}
-				else
-				{
-					delete output[ inputKey ] ;
-				}
-			}
-			
-			continue ;
-		}
-		
-		
-		nextPath = context.path + context.options.pathSeparator + key ;
-		
-		// If it is an object, recursively check it
-		//if ( maskValue instanceof masklib.Mask )
-		if ( maskValue !== null && typeof maskValue === 'object' )
-		{
-			//console.log( 'sub' ) ;
-			
-			if ( input.hasOwnProperty( key ) && input[ key ] !== null && typeof input[ key ] === 'object' )
-			{
-				//console.log( 'recursive call' ) ;
-				
-				if ( input.key instanceof masklib.Mask )
-				{
-					output[ key ] = input.key.applyTo( input[ key ] , { path: nextPath } , true ) ;
-				}
-				else
-				{
-					output[ key ] = this.applyTo( input[ key ] , tree.extend( null , {} , context , { mask: maskValue , path: nextPath } ) ) ;
-				}
-			}
-		}
-		// If mask exists, remove the key
-		else if ( input.hasOwnProperty( key ) )
-		{
-			delete output[ key ] ;
-		}
-	}
-	
-	return output ;
-} ;
-
-},{"./tree.js":36,"util":17}],35:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK object tree toolbox
-
-	Copyright (c) 2014, 2015 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-var treePath = {} ;
-module.exports = treePath ;
-
-
-
-treePath.op = function op( type , object , path , value )
-{
-	var i , parts , last , pointer , key , isArray = false , pathArrayMode = false , isGenericSet ;
-	
-	if ( typeof path === 'string' )
-	{
-		// Split the path into parts
-		parts = path.match( /([.#\[\]]|[^.#\[\]]+)/g ) ;
-		//parts = path.match( /([.#](?!$)|[^.#]+)/g ) ;
-	}
-	else if ( Array.isArray( path ) )
-	{
-		parts = path ;
-		pathArrayMode = true ;
-	}
-	else
-	{
-		throw new TypeError( '[tree.path] .' + type + '(): the path argument should be a string or an array' ) ;
-	}
-	
-	switch ( type )
-	{
-		case 'get' :
-		case 'delete' :
-			isGenericSet = false ;
-			break ;
-		case 'set' :
-		case 'define' :
-		case 'inc' :
-		case 'dec' :
-		case 'append' :
-		case 'prepend' :
-		case 'autoPush' :
-			isGenericSet = true ;
-			break ;
-		default :
-			throw new TypeError( "[tree.path] .op(): wrong type of operation '" + type + "'" ) ;
-	}
-	
-	
-	//console.log( parts ) ;
-	// The pointer start at the object's root
-	pointer = object ;
-	
-	last = parts.length - 1 ;
-	
-	for ( i = 0 ; i <= last ; i ++ )
-	{
-		if ( pathArrayMode )
-		{
-			if ( key === undefined )
-			{
-				key = parts[ i ] ;
-				continue ;
-			}
-			
-			if ( ! pointer[ key ] || ( typeof pointer[ key ] !== 'object' && typeof pointer[ key ] !== 'function' ) )
-			{
-				if ( ! isGenericSet ) { return undefined ; }
-				pointer[ key ] = {} ;
-			}
-			
-			pointer = pointer[ key ] ;
-			key = parts[ i ] ;
-			
-			continue ;
-		}
-		else if ( parts[ i ] === '.' )
-		{
-			isArray = false ;
-			
-			if ( key === undefined ) { continue ; }
-			
-			if ( ! pointer[ key ] || ( typeof pointer[ key ] !== 'object' && typeof pointer[ key ] !== 'function' ) )
-			{
-				if ( ! isGenericSet ) { return undefined ; }
-				pointer[ key ] = {} ;
-			}
-			
-			pointer = pointer[ key ] ;
-			
-			continue ;
-		}
-		else if ( parts[ i ] === '#' || parts[ i ] === '[' )
-		{
-			isArray = true ;
-			
-			if ( key === undefined )
-			{
-				// The root element cannot be altered, we are in trouble if an array is expected but we have only a regular object.
-				if ( ! Array.isArray( pointer ) ) { return undefined ; }
-				continue ;
-			}
-			
-			if ( ! pointer[ key ] || ! Array.isArray( pointer[ key ] ) )
-			{
-				if ( ! isGenericSet ) { return undefined ; }
-				pointer[ key ] = [] ;
-			}
-			
-			pointer = pointer[ key ] ;
-			
-			continue ;
-		}
-		else if ( parts[ i ] === ']' )
-		{
-			// Closing bracket: do nothing
-			continue ;
-		}
-		
-		if ( ! isArray ) { key = parts[ i ] ; continue ; }
-		
-		switch ( parts[ i ] )
-		{
-			case 'length' :
-				key = parts[ i ] ;
-				break ;
-			
-			// Pseudo-key
-			case 'first' :
-				key = 0 ;
-				break ;
-			case 'last' :
-				key = pointer.length - 1 ;
-				if ( key < 0 ) { key = 0 ; }
-				break ;
-			case 'next' :
-				if ( ! isGenericSet ) { return undefined ; }
-				key = pointer.length ;
-				break ;
-			case 'insert' :
-				if ( ! isGenericSet ) { return undefined ; }
-				pointer.unshift( undefined ) ;
-				key = 0 ;
-				break ;
-			
-			// default = number
-			default:
-				// Convert the string key to a numerical index
-				key = parseInt( parts[ i ] , 10 ) ;
-		}
-	}
-	
-	switch ( type )
-	{
-		case 'get' :
-			return pointer[ key ] ;
-		case 'delete' :
-			if ( isArray && typeof key === 'number' ) { pointer.splice( key , 1 ) ; }
-			else { delete pointer[ key ] ; }
-			return ;
-		case 'set' :
-			pointer[ key ] = value ;
-			return pointer[ key ] ;
-		case 'define' :
-			// define: set only if it doesn't exist
-			if ( ! ( key in pointer ) ) { pointer[ key ] = value ; }
-			return pointer[ key ] ;
-		case 'inc' :
-			if ( typeof pointer[ key ] === 'number' ) { pointer[ key ] ++ ; }
-			else if ( ! pointer[ key ] || typeof pointer[ key ] !== 'object' ) { pointer[ key ] = 1 ; }
-			return pointer[ key ] ;
-		case 'dec' :
-			if ( typeof pointer[ key ] === 'number' ) { pointer[ key ] -- ; }
-			else if ( ! pointer[ key ] || typeof pointer[ key ] !== 'object' ) { pointer[ key ] = -1 ; }
-			return pointer[ key ] ;
-		case 'append' :
-			if ( ! pointer[ key ] ) { pointer[ key ] = [ value ] ; }
-			else if ( Array.isArray( pointer[ key ] ) ) { pointer[ key ].push( value ) ; }
-			//else ? do nothing???
-			return pointer[ key ] ;
-		case 'prepend' :
-			if ( ! pointer[ key ] ) { pointer[ key ] = [ value ] ; }
-			else if ( Array.isArray( pointer[ key ] ) ) { pointer[ key ].unshift( value ) ; }
-			//else ? do nothing???
-			return pointer[ key ] ;
-		case 'autoPush' :
-			if ( pointer[ key ] === undefined ) { pointer[ key ] = value ; }
-			else if ( Array.isArray( pointer[ key ] ) ) { pointer[ key ].push( value ) ; }
-			else { pointer[ key ] = [ pointer[ key ] , value ] ; }
-			return pointer[ key ] ;
-	}
-} ;
-
-
-
-// get, set and delete use the same op() function
-treePath.get = treePath.op.bind( undefined , 'get' ) ;
-treePath.delete = treePath.op.bind( undefined , 'delete' ) ;
-treePath.set = treePath.op.bind( undefined , 'set' ) ;
-treePath.define = treePath.op.bind( undefined , 'define' ) ;
-treePath.inc = treePath.op.bind( undefined , 'inc' ) ;
-treePath.dec = treePath.op.bind( undefined , 'dec' ) ;
-treePath.append = treePath.op.bind( undefined , 'append' ) ;
-treePath.prepend = treePath.op.bind( undefined , 'prepend' ) ;
-treePath.autoPush = treePath.op.bind( undefined , 'autoPush' ) ;
-
-
-
-// Prototype used for object creation, so they can be created with Object.create( tree.path.prototype )
-treePath.prototype = {
-	get: function( path ) { return treePath.get( this , path ) ; } ,
-	delete: function( path ) { return treePath.delete( this , path ) ; } ,
-	set: function( path , value ) { return treePath.set( this , path , value ) ; } ,
-	define: function( path , value ) { return treePath.define( this , path , value ) ; } ,
-	inc: function( path , value ) { return treePath.inc( this , path , value ) ; } ,
-	dec: function( path , value ) { return treePath.dec( this , path , value ) ; } ,
-	append: function( path , value ) { return treePath.append( this , path , value ) ; } ,
-	prepend: function( path , value ) { return treePath.prepend( this , path , value ) ; } ,
-	autoPush: function( path , value ) { return treePath.autoPush( this , path , value ) ; }
-} ;
-
-
-
-// Upgrade an object so it can support get, set and delete at its root
-treePath.upgrade = function upgrade( object )
-{
-	Object.defineProperties( object , {
-		get: { value: treePath.op.bind( undefined , 'get' , object ) } ,
-		delete: { value: treePath.op.bind( undefined , 'delete' , object ) } ,
-		set: { value: treePath.op.bind( undefined , 'set' , object ) } ,
-		define: { value: treePath.op.bind( undefined , 'define' , object ) } ,
-		inc: { value: treePath.op.bind( undefined , 'inc' , object ) } ,
-		dec: { value: treePath.op.bind( undefined , 'dec' , object ) } ,
-		append: { value: treePath.op.bind( undefined , 'append' , object ) } ,
-		prepend: { value: treePath.op.bind( undefined , 'prepend' , object ) } ,
-		autoPush: { value: treePath.op.bind( undefined , 'autoPush' , object ) }
-	} ) ;
-} ;
-
-
-
-
-},{}],36:[function(require,module,exports){
-/*
-	The Cedric's Swiss Knife (CSK) - CSK object tree toolbox
-
-	Copyright (c) 2014, 2015 Cédric Ronvel 
-	
-	The MIT License (MIT)
-
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"), to deal
-	in the Software without restriction, including without limitation the rights
-	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-	copies of the Software, and to permit persons to whom the Software is
-	furnished to do so, subject to the following conditions:
-
-	The above copyright notice and this permission notice shall be included in all
-	copies or substantial portions of the Software.
-
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-	SOFTWARE.
-*/
-
-"use strict" ;
-
-
-
-// Create and export
-var tree = {} ;
-module.exports = tree ;
-
-
-// Tier 0: extend() is even used to build the module
-tree.extend = require( './extend.js' ) ;
-
-
-
-tree.extend( null , tree ,
-	
-	// Tier 1
-	require( './lazy.js' ) ,
-	
-	// Tier 2
-	require( './clone.js' ) ,
-	
-	// Tier 3
-	{ path: require( './path.js' ) } ,
-	require( './diff.js' ) ,
-	require( './mask.js' )
-) ;
-
-
-
-},{"./clone.js":30,"./diff.js":31,"./extend.js":32,"./lazy.js":33,"./mask.js":34,"./path.js":35}]},{},[2])(2)
+},{"./support/isBuffer":39,"_process":17,"inherits":38}]},{},[2])(2)
 });
