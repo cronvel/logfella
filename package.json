@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "0.3.55",
+  "version": "0.3.57",
   "engines": {
     "node": ">=4.0.0"
   },
@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "async-kit": "^2.2.3",
-    "kung-fig": "^0.38.6",
+    "kung-fig": "^0.38.7",
     "logfella-common-transport": "^0.3.4",
-    "string-kit": "^0.6.1",
+    "string-kit": "^0.6.2",
     "tree-kit": "^0.5.26"
   },
   "devDependencies": {
@@ -21,7 +21,7 @@
     "expect.js": "^0.3.1",
     "jshint": "^2.9.4",
     "mocha": "^3.3.0",
-    "uglify-js": "^3.0.3"
+    "uglify-js-es6": "^2.8.9"
   },
   "scripts": {
     "test": "mocha -R dot"
