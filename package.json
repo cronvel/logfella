@@ -1,8 +1,8 @@
 {
   "name": "logfella",
-  "version": "0.3.57",
+  "version": "0.3.58",
   "engines": {
-    "node": ">=4.0.0"
+    "node": ">=6.0.0"
   },
   "description": "Log everything!",
   "main": "lib/Logfella.js",
@@ -11,16 +11,14 @@
   },
   "dependencies": {
     "async-kit": "^2.2.3",
-    "kung-fig": "^0.38.7",
+    "kung-fig": "^0.45.3",
     "logfella-common-transport": "^0.3.4",
-    "string-kit": "^0.6.2",
+    "string-kit": "^0.6.11",
     "tree-kit": "^0.5.26"
   },
   "devDependencies": {
     "browserify": "^14.3.0",
     "expect.js": "^0.3.1",
-    "jshint": "^2.9.4",
-    "mocha": "^3.3.0",
     "uglify-js-es6": "^2.8.9"
   },
   "scripts": {

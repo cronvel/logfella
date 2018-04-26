@@ -2,8 +2,8 @@
 /*
 	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
 
-	Copyright (c) 2015 Cédric Ronvel 
-	
+	Copyright (c) 2015 Cédric Ronvel
+
 	The MIT License (MIT)
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29,7 +29,7 @@
 
 
 
-			/* BrowserConsole transport */
+/* BrowserConsole transport */
 
 
 
@@ -48,8 +48,7 @@ BrowserConsoleTransport.prototype.constructor = BrowserConsoleTransport ;
 
 
 
-BrowserConsoleTransport.create = function create( logger , config )
-{
+BrowserConsoleTransport.create = function create( logger , config ) {
 	var transport = Object.create( BrowserConsoleTransport.prototype ) ;
 	transport.init( logger , config ) ;
 	return transport ;
@@ -57,14 +56,13 @@ BrowserConsoleTransport.create = function create( logger , config )
 
 
 
-BrowserConsoleTransport.prototype.init = function init( logger , config )
-{
+BrowserConsoleTransport.prototype.init = function init( logger , config ) {
 	// Arguments management
 	if ( config === null || typeof config !== 'object' ) { config = {} ; }
-	
+
 	// Call parent init()
 	CommonTransport.prototype.init.call( this , logger , config ) ;
-	
+
 	Object.defineProperties( this , {
 		color: { value: false , enumerable: true } ,
 		indent: { value: config.indent === undefined ? true : !! config.indent , writable: true , enumerable: true } ,
@@ -76,8 +74,7 @@ BrowserConsoleTransport.prototype.init = function init( logger , config )
 
 
 
-BrowserConsoleTransport.prototype.transport = function transport( data , cache , callback )
-{
+BrowserConsoleTransport.prototype.transport = function transport( data , cache , callback ) {
 	//console.log( this.message( time , level , levelName , domain , message ) ) ;
 	console.log( this.messageFormatter( data , cache ) + '\n' ) ;
 	callback() ;
@@ -90,8 +87,8 @@ BrowserConsoleTransport.prototype.transport = function transport( data , cache ,
 /*
 	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
 
-	Copyright (c) 2015 Cédric Ronvel 
-	
+	Copyright (c) 2015 Cédric Ronvel
+
 	The MIT License (MIT)
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -128,17 +125,14 @@ var util = require( 'util' ) ;
 var path , os , kungFig = require( 'kung-fig' ) ;
 var browserPageTime ;
 
-if ( process.browser )
-{
+if ( process.browser ) {
 	browserPageTime = Date.now() ;
-	
-	if ( process.uptime !== 'function' )
-	{
+
+	if ( process.uptime !== 'function' ) {
 		process.uptime = function uptime() { return Date.now() - browserPageTime ; } ;
 	}
 }
-else
-{
+else {
 	path = require( 'path' ) ;
 	os = require( 'os' ) ;
 	kungFig = require( 'kung-fig' ) ;
@@ -169,8 +163,7 @@ var defaultLevelHash = {} ,
 
 
 
-Logfella.create = function create( config )
-{
+Logfella.create = function create( config ) {
 	var self = Object.create( Logfella.prototype , {
 		logTransports: { value: [] , writable: true , enumerable: true } ,
 		monTransports: { value: [] , writable: true , enumerable: true } ,
@@ -184,49 +177,61 @@ Logfella.create = function create( config )
 		levelArray: { value: defaultLevelArray , writable: true , enumerable: true } ,
 		levelHash: { value: defaultLevelHash , writable: true , enumerable: true } ,
 		mon: { value: { warnings: 0 , errors: 0 } , writable: true , enumerable: true } ,
-		monPeriod: { value: null , writable: true , enumerable: true } ,
+		monPeriod: { value: null , writable: true , enumerable: true }
 	} ) ;
-	
+
 	Object.defineProperty( self , 'root' , { value: self } ) ;
-	
-	if ( ! process.browser )
-	{
+
+	if ( ! process.browser ) {
 		// unknown case are produced when running REPL
 		self.app = path.basename( process.argv[ 1 ] || '(unknown)' ) ;
 		self.pid = process.pid ;
 		self.hostname = os.hostname() ;
 	}
-	
+
 	if ( config ) { self.setGlobalConfig( config ) ; }
-	
+
 	return self ;
+} ;
+
+
+
+Logfella.defineOrConfig = function defineOrConfig( name , config ) {
+	if ( Logfella[ name ] ) {
+		if ( Logfella[ name ] instanceof Logfella ) {
+			Logfella[ name ].setGlobalConfig( config ) ;
+		}
+		else {
+			throw new Error( "Logfella: '" + name + "' is reserved" ) ;
+		}
+	}
+	else {
+		Logfella[ name ] = Logfella.create( config ) ;
+	}
 } ;
 
 
 
 ( function() {
 	var i , name ;
-	
-	function createShortHand( level , name )
-	{
-		Logfella.prototype[ name ] = function() {
-			
+
+	var createShortHand = ( level , name_ ) => {
+		Logfella.prototype[ name_ ] = function( ... args ) {
+
 			var callback ;
-			
+
 			// Fast exit, if possible
-			if ( level < this.minLevel || level > this.maxLevel )
-			{
-				callback = arguments[ arguments.length - 1 ] ;
+			if ( level < this.minLevel || level > this.maxLevel ) {
+				callback = args[ args.length - 1 ] ;
 				if ( typeof callback === 'function' ) { callback() ; }
 				return ;
 			}
-			
-			return this.log.apply( this , [ level ].concat( Array.prototype.slice.call( arguments ) ) ) ;
+
+			return this.log( level , ... args ) ;
 		} ;
-	}
-	
-	for ( i = 0 ; i < defaultLevelArray.length ; i ++ )
-	{
+	} ;
+
+	for ( i = 0 ; i < defaultLevelArray.length ; i ++ ) {
 		name = defaultLevelArray[ i ] ;
 		defaultLevelHash[ name ] = i ;
 		defaultAvailableLevels.push( i ) ;
@@ -237,71 +242,60 @@ Logfella.create = function create( config )
 
 
 
-Logfella.prototype.use = function use( domain )
-{
+Logfella.prototype.use = function use( domain ) {
 	// Force a domain
 	var logger = Object.create( this , {
 		domain: { value: domain , enumerable: true }
 	} ) ;
-	
+
 	return logger ;
 } ;
 
 
 
-Logfella.prototype.setGlobalConfig = function setGlobalConfig( config )
-{
+Logfella.prototype.setGlobalConfig = function setGlobalConfig( config ) {
 	var i , iMax ;
-	
+
 	if ( config.app ) { this.app = config.app ; }
-	
-	if ( config.minLevel !== undefined )
-	{
+
+	if ( config.minLevel !== undefined ) {
 		if ( typeof config.minLevel === 'number' ) { this.minLevel = config.minLevel ; }
 		else if ( typeof config.minLevel === 'string' ) { this.minLevel = this.levelHash[ config.minLevel ] ; }
 	}
-	
-	if ( config.maxLevel !== undefined )
-	{
+
+	if ( config.maxLevel !== undefined ) {
 		if ( typeof config.maxLevel === 'number' ) { this.maxLevel = config.maxLevel ; }
 		else if ( typeof config.maxLevel === 'string' ) { this.maxLevel = this.levelHash[ config.maxLevel ] ; }
 	}
-	
+
 	if ( config.defaultDomain && typeof config.defaultDomain === 'string' ) { this.defaultDomain = config.defaultDomain ; }
-	
-	if ( config.overrideConsole !== undefined )
-	{
-		if ( ! this.overrideConsole !== ! config.overrideConsole )	// jshint ignore: line
-		{
+
+	if ( config.overrideConsole !== undefined ) {
+		if ( ! this.overrideConsole !== ! config.overrideConsole ) {
 			if ( config.overrideConsole ) { this.replaceConsole() ; }
 			else { this.restoreConsole() ; }
 		}
-		
+
 		this.overrideConsole = !! config.overrideConsole ;
 	}
-	
-	if ( config.monPeriod !== undefined )
-	{
-		if ( ! config.monPeriod )
-		{
+
+	if ( config.monPeriod !== undefined ) {
+		if ( ! config.monPeriod ) {
 			this.monPeriod = null ;
 			this.stopMon() ;
 		}
-		else if ( typeof config.monPeriod === 'number' )
-		{
+		else if ( typeof config.monPeriod === 'number' ) {
 			this.monPeriod = config.monPeriod ;
 			this.startMon() ;
 		}
 	}
-	
-	if ( Array.isArray( config.transports ) )
-	{
+
+	if ( Array.isArray( config.transports ) ) {
 		this.removeAllTransports() ;
-		
+
 		iMax = config.transports.length ;
-		
-		for ( i = 0 ; i < iMax ; i ++ )
-		{
+
+		for ( i = 0 ; i < iMax ; i ++ ) {
 			this.addTransport( config.transports[ i ].type , config.transports[ i ] ) ;
 		}
 	}
@@ -309,28 +303,25 @@ Logfella.prototype.setGlobalConfig = function setGlobalConfig( config )
 
 
 
-Logfella.prototype.startMon = function startMon()
-{
+Logfella.prototype.startMon = function startMon() {
 	if ( this.monTimer ) { return ; }
-	
+
 	this.monTimer = setTimeout( () => {
-			
-			this.monTimer = null ;
-			this.monFrame( () => {
-				this.startMon() ;
-			} ) ;
-		} ,
-		
-		this.monPeriod
+
+		this.monTimer = null ;
+		this.monFrame( () => {
+			this.startMon() ;
+		} ) ;
+	} ,
+
+	this.monPeriod
 	) ;
 } ;
 
 
 
-Logfella.prototype.stopMon = function stopMon()
-{
-	if ( this.monTimer )
-	{
+Logfella.prototype.stopMon = function stopMon() {
+	if ( this.monTimer ) {
 		clearTimeout( this.monTimer ) ;
 		this.monTimer = null ;
 	}
@@ -338,180 +329,157 @@ Logfella.prototype.stopMon = function stopMon()
 
 
 
-Logfella.prototype.updateMon = function updateMon( monModifier )
-{
+Logfella.prototype.updateMon = function updateMon( monModifier ) {
 	kungFig.autoReduce( this.mon , monModifier ) ;
-} ;	
+} ;
 
 
 
 // log( level , domain , [code|meta] , formatedMessage , [arg1] , [arg2] , ... , [callback] )
-Logfella.prototype.log = function log( level )
-{
+Logfella.prototype.log = function log( level , ... args ) {
 	var callback , formatCount , formatedMessage , formatedMessageIndex , data , type , o , monModifier , cache = {} ;
-	
-	callback = arguments[ arguments.length - 1 ] ;
+
+	callback = args[ args.length - 1 ] ;
 	if ( typeof callback !== 'function' ) { callback = noop ; }
-	
-	
+
+
 	// Level management should come first for early exit
-	if ( typeof level === 'number' )
-	{
+	if ( typeof level === 'number' ) {
 		// Fast exit
 		if ( level < this.minLevel || level > this.maxLevel || level >= this.levelArray.length ) { callback() ; return ; }
-		
+
 		data = {
 			level: level ,
 			levelName: this.levelArray[ level ]
 		} ;
 	}
-	else if ( typeof level === 'string' )
-	{
+	else if ( typeof level === 'string' ) {
 		data = {
 			levelName: level ,
 			level: this.levelHash[ level ]
 		} ;
-		
+
 		// Fast exit
 		if ( data.level === undefined || data.level < this.minLevel || data.level > this.maxLevel ) { callback() ; return ; }
 	}
-	else
-	{
+	else {
 		callback() ;
 		return ;
 	}
-	
-	
-	if ( this.domain )
-	{
+
+
+	if ( this.domain ) {
 		data.domain = this.domain ;
+		formatedMessageIndex = 0 ;
+	}
+	else {
+		data.domain = typeof args[ 0 ] === 'string' ? args[ 0 ] : this.defaultDomain ;
 		formatedMessageIndex = 1 ;
 	}
-	else
-	{
-		data.domain = typeof arguments[ 1 ] === 'string' ? arguments[ 1 ] : this.defaultDomain ;
-		formatedMessageIndex = 2 ;
-	}
-	
+
 	// Check if there is a 'code/meta' argument
-	if ( arguments.length > formatedMessageIndex + 1 && typeof arguments[ formatedMessageIndex + 1 ] !== 'function' )
-	{
-		type = typeof arguments[ formatedMessageIndex ] ;
-		
-		if ( arguments[ formatedMessageIndex ] && type === 'object' )
-		{
+	if ( args.length > formatedMessageIndex + 1 && typeof args[ formatedMessageIndex + 1 ] !== 'function' ) {
+		type = typeof args[ formatedMessageIndex ] ;
+
+		if ( args[ formatedMessageIndex ] && type === 'object' ) {
 			// This is a 'meta' argument
-			data.meta = arguments[ formatedMessageIndex ] ;
-			
+			data.meta = args[ formatedMessageIndex ] ;
+
 			// Extract the 'code' property, if any...
-			if ( 'code' in data.meta )
-			{
+			if ( 'code' in data.meta ) {
 				data.code = data.meta.code ;
 				delete data.meta.code ;
 			}
-			
+
 			// Extract the 'mon' property, if any...
-			if ( 'mon' in data.meta )
-			{
+			if ( 'mon' in data.meta ) {
 				monModifier = data.meta.mon ;
 				delete data.meta.mon ;
 			}
-			
+
 			formatedMessageIndex ++ ;
 		}
-		else if ( type === 'number' )
-		{
+		else if ( type === 'number' ) {
 			// This is a 'code' argument
-			data.code = arguments[ formatedMessageIndex ] ;
+			data.code = args[ formatedMessageIndex ] ;
 			formatedMessageIndex ++ ;
 		}
-		else if ( type === 'string' && arguments[ formatedMessageIndex ].indexOf( '%' ) === -1 )
-		{
+		else if ( type === 'string' && args[ formatedMessageIndex ].indexOf( '%' ) === -1 ) {
 			// This is a 'code' argument
-			data.code = arguments[ formatedMessageIndex ] ;
+			data.code = args[ formatedMessageIndex ] ;
 			formatedMessageIndex ++ ;
 		}
-		
+
 	}
-	
-	if ( data.level >= 4 )
-	{
+
+	if ( data.level >= 4 ) {
 		// The user may override fucked up that, so we ensure we deal with numbers
 		if ( data.level >= 5 ) { this.mon.errors = + this.mon.errors + 1 || 1 ; }
 		else { this.mon.warnings = + this.mon.warnings + 1 || 1 ; }
 	}
-	
-	if ( monModifier && typeof monModifier === 'object' )
-	{
+
+	if ( monModifier && typeof monModifier === 'object' ) {
 		kungFig.autoReduce( this.mon , monModifier ) ;
 	}
-	
-	
+
+
 	// If there is no transport, skip now... Should come after monitoring operation
 	if ( ! this.logTransports.length ) { callback() ; return ; }
-	
-	
-	formatedMessage = arguments[ formatedMessageIndex ] ;
-	
-	if ( typeof formatedMessage === 'string' )
-	{
+
+
+	formatedMessage = args[ formatedMessageIndex ] ;
+
+	if ( typeof formatedMessage === 'string' ) {
 		// Variable list of arguments
 		formatCount = string.format.count( formatedMessage ) ;	// Count formated arguments
-		
-		if ( ! formatCount )
-		{
+
+		if ( ! formatCount ) {
 			data.messageData = formatedMessage ;
 		}
-		else
-		{
-			data.messageData = Array.prototype.slice.call( arguments , formatedMessageIndex , formatedMessageIndex + 1 + formatCount ) ;
+		else {
+			data.messageData = args.slice( formatedMessageIndex , formatedMessageIndex + 1 + formatCount ) ;
 			data.messageData.isFormat = true ;
 		}
 	}
-	else
-	{
+	else {
 		data.messageData = formatedMessage ;
 	}
-	
-	if ( data.level === 0 && ! data.stack )
-	{
+
+	if ( data.level === 0 && ! data.stack ) {
 		// Add a stack trace for 'trace' level
-		if ( process.browser )
-		{
+		if ( process.browser ) {
 			o = new Error() ;
 		}
-		else
-		{
+		else {
 			o = {} ;
 			Error.captureStackTrace( o , Logfella.prototype.trace ) ;
-			
-			if ( o.stack.indexOf( '\n' ) === -1 )
-			{
+
+			if ( o.stack.indexOf( '\n' ) === -1 ) {
 				// The Logfella#log have been called instead of Logfella#trace
-				
+
 				// For some reason, Error.captureStackTrace() do not work twice on the same object,
 				// even if the 'stack' property is deleted.
 				o = {} ;
 				Error.captureStackTrace( o , Logfella.prototype.log ) ;
 			}
 		}
-		
+
 		data.stack = o.stack ;
 	}
-	
+
 	data.app = this.app ;
 	data.time = new Date() ;
 	data.uptime = process.uptime() ;
 	data.pid = this.pid ;
 	data.hostname = this.hostname ;
 	data.messageCache = {} ;
-	
+
 	// Launch all transport in parallel mode
 	// DO NOT nice(), some transport like 'console' (console.log()) should write as soon as possible to be relevant,
 	// other transports should async by themself, if it's relevant
-	
+
 	async.parallel( this.logTransports )
-	.using( function( transport , usingCallback ) {
+	.using( ( transport , usingCallback ) => {
 		if ( level < transport.minLevel || level > transport.maxLevel )  { usingCallback() ; return ; }
 		transport.transport( data , cache , usingCallback ) ;
 	} )
@@ -521,15 +489,14 @@ Logfella.prototype.log = function log( level )
 
 
 // monFrame( [callback] )
-Logfella.prototype.monFrame = function monFrame( callback )
-{
+Logfella.prototype.monFrame = function monFrame( callback ) {
 	if ( ! callback ) { callback = noop ; }
-	
+
 	// If there is no transport, skip now...
 	if ( ! this.monTransports.length ) { callback() ; return ; }
-	
+
 	var cache = {} ;
-	
+
 	var data = {
 		level: null ,
 		levelName: 'mon' ,
@@ -541,13 +508,13 @@ Logfella.prototype.monFrame = function monFrame( callback )
 		hostname: this.hostname ,
 		mon: this.mon
 	} ;
-	
+
 	// Launch all transport in parallel mode
 	// DO NOT nice(), some transport like 'console' (console.log()) should write as soon as possible to be relevant,
 	// other transports should async by themself, if it's relevant
-	
+
 	async.parallel( this.monTransports )
-	.using( function( transport , usingCallback ) {
+	.using( ( transport , usingCallback ) => {
 		//if ( ! transport.monitoring ) { usingCallback() ; return ; }
 		transport.transport( data , cache , usingCallback ) ;
 	} )
@@ -560,12 +527,10 @@ Logfella.transports = {} ;
 
 
 
-Logfella.prototype.addTransport = function addTransport( transport , config )
-{
+Logfella.prototype.addTransport = function addTransport( transport , config ) {
 	var module_ , role , instance ;
-	
-	switch ( config.role )
-	{
+
+	switch ( config.role ) {
 		case 'mon' :
 			role = 'monTransports' ;
 			break ;
@@ -576,13 +541,11 @@ Logfella.prototype.addTransport = function addTransport( transport , config )
 			role = 'logTransports' ;
 			break ;
 	}
-	
-	if ( typeof transport === 'string' )
-	{
+
+	if ( typeof transport === 'string' ) {
 		transport = transport[ 0 ].toUpperCase() + transport.slice( 1 ) ;
-		
-		if ( Logfella.transports[ transport ] === undefined && ! process.browser )
-		{
+
+		if ( Logfella.transports[ transport ] === undefined && ! process.browser ) {
 			try {
 				// First try to get core transport
 				module_ = require( './' + transport + '.transport.js' ) ;
@@ -592,60 +555,55 @@ Logfella.prototype.addTransport = function addTransport( transport , config )
 					// Then try to get a module
 					module_ = require( 'logfella-' + string.camelCaseToDashed( transport ) + '-transport' ) ;
 				}
-				catch ( error ) {
-					
+				catch ( error_ ) {
+
 					try {
 						// Try to require the parent module: useful if Logfella is a devDependecy of a transport stand-alone module,
 						// e.g.: unit tests of that transport.
-						
+
 						//console.log( "\n\n\n>>>>>>>>>>>>>>\nChecking parent to find the transport:" , transport , "\n>>>>>>>>>>>\n\n" ) ;
 						module_ = require( '../../../package.json' ) ;
-						
-						if ( module_.name === 'logfella-' + string.camelCaseToDashed( transport ) + '-transport' )
-						{
+
+						if ( module_.name === 'logfella-' + string.camelCaseToDashed( transport ) + '-transport' ) {
 							//console.log( "\n\n\n>>>>>>>>>>>>>>\nParent match!\n>>>>>>>>>>>\n\n" ) ;
 							module_ = require( '../../../' ) ;
 						}
-						else
-						{
+						else {
 							//console.log( "\n\n\n>>>>>>>>>>>>>>\nParent mismatch...\n>>>>>>>>>>>\n\n" ) ;
 							return ;
 						}
 					}
-					catch ( error ) {
+					catch ( error__ ) {
 						// Nothing could be loaded...
 						// Should a logger log error? or not? That's a good question!!!
-						
+
 						//console.log( "\n\n\n>>>>>>>>>>>>>>\nCan't find transport:" , transport , "\n>>>>>>>>>>>\n\n" ) ;
 						return ;
 					}
 				}
 			}
-			
+
 			if (
 				module_.prototype instanceof CommonTransport ||
 				( typeof module_.create === 'function' && typeof module_.prototype.transport === 'function' )
-			)
-			{
+			) {
 				Logfella.transports[ transport ] = module_ ;
 			}
-			else
-			{ 
+			else {
 				//console.log( "\n\n\n>>>>>>>>>>>>>>\nCan't find transport:" , transport , "\n>>>>>>>>>>>\n\n" ) ;
 				return ;
 			}
 		}
-		
+
 		transport = Logfella.transports[ transport ] ;
 	}
-	
-	if ( ! transport || typeof transport.create !== 'function' )
-	{
+
+	if ( ! transport || typeof transport.create !== 'function' ) {
 		// What should be done here? Nothing?
 		// Can't really log: the logger is probably about to be configured, and not all transport may be ready yet...
 		return ;
 	}
-	
+
 	try {
 		instance = transport.create( this , config ) ;
 	}
@@ -654,19 +612,18 @@ Logfella.prototype.addTransport = function addTransport( transport , config )
 		// Can't really log: the logger is probably about to be configured, and not all transport may be ready yet...
 		return ;
 	}
-	
+
 	this[ role ].push( instance ) ;
 } ;
 
 
 
-Logfella.prototype.removeAllTransports = function removeAllTransports()
-{
+Logfella.prototype.removeAllTransports = function removeAllTransports() {
 	var i , iMax ;
-	
+
 	for ( i = 0 , iMax = this.logTransports.length ; i < iMax ; i ++ ) { this.logTransports[ i ].shutdown() ; }
 	for ( i = 0 , iMax = this.monTransports.length ; i < iMax ; i ++ ) { this.monTransports[ i ].shutdown() ; }
-	
+
 	this.logTransports = [] ;
 	this.monTransports = [] ;
 } ;
@@ -675,88 +632,77 @@ Logfella.prototype.removeAllTransports = function removeAllTransports()
 
 var exitHandlersInstalled = false ;
 
-if ( process.browser )
-{
+if ( process.browser ) {
 	// It does not make sense in browsers...
 	Logfella.prototype.installExitHandlers = function installExitHandlers() {} ;
 }
-else
-{
-	Logfella.prototype.installExitHandlers = function installExitHandlers()
-	{
+else {
+	Logfella.prototype.installExitHandlers = function installExitHandlers() {
 		var logger = this.root ;
 		var domain = this.domain || 'logfella' ;
-		
+
 		if ( exitHandlersInstalled ) { return ; }
 		exitHandlersInstalled = true ;
-		
-		process.on( 'asyncExit' , function( code , timeout , callback ) {
+
+		process.on( 'asyncExit' , ( code , timeout , callback ) => {
 			logger.info( domain , 'The process is about to exit within %ims with code %i...' , timeout , code , callback ) ;
 		} ) ;
-		
-		process.on( 'exit' , function( code ) {
+
+		process.on( 'exit' , ( code ) => {
 			logger.info( domain , 'The process is exiting with code %i...' , code ) ;
 		} ) ;
-		
-		process.on( 'uncaughtException' , function( error ) {
-			if ( process.listenerCount( 'uncaughtException' ) <= 1 )
-			{
+
+		process.on( 'uncaughtException' , ( error ) => {
+			if ( process.listenerCount( 'uncaughtException' ) <= 1 ) {
 				// We are on our own
-				logger.fatal( domain , 'Uncaught exception: %E' , error , function() {
+				logger.fatal( domain , 'Uncaught exception: %E' , error , () => {
 					// All underlying transports have finished, we can exit safely without losing logs...
 					async.exit( 1 ) ;
 				} ) ;
 			}
-			else
-			{
+			else {
 				// Another handler should have done something about that failure
 				logger.fatal( domain , 'Uncaught exception: %E' , error ) ;
 			}
 		} ) ;
-		
-		process.on( 'SIGINT' , function( error ) {
-			if ( process.listenerCount( 'SIGINT' ) <= 1 )
-			{
+
+		process.on( 'SIGINT' , ( error ) => {
+			if ( process.listenerCount( 'SIGINT' ) <= 1 ) {
 				// We are on our own
-				logger.info( domain , 'Received a SIGINT signal.' , function() {
+				logger.info( domain , 'Received a SIGINT signal.' , () => {
 					// All underlying transports have finished, we can exit safely without losing logs...
 					async.exit( 130 ) ;
 				} ) ;
 			}
-			else
-			{
+			else {
 				// Another handler should have done something about that failure
 				logger.info( domain , 'Received a SIGINT signal.' ) ;
 			}
 		} ) ;
-		
-		process.on( 'SIGTERM' , function( error ) {
-			if ( process.listenerCount( 'SIGTERM' ) <= 1 )
-			{
+
+		process.on( 'SIGTERM' , ( error ) => {
+			if ( process.listenerCount( 'SIGTERM' ) <= 1 ) {
 				// We are on our own
-				logger.info( domain , 'Received a SIGTERM signal.' , function() {
+				logger.info( domain , 'Received a SIGTERM signal.' , () => {
 					// All underlying transports have finished, we can exit safely without losing logs...
 					async.exit( 143 ) ;
 				} ) ;
 			}
-			else
-			{
+			else {
 				// Another handler should have done something about that failure
 				logger.info( domain , 'Received a SIGTERM signal.' ) ;
 			}
 		} ) ;
-		
-		process.on( 'SIGHUP' , function( error ) {
-			if ( process.listenerCount( 'SIGHUP' ) <= 1 )
-			{
+
+		process.on( 'SIGHUP' , ( error ) => {
+			if ( process.listenerCount( 'SIGHUP' ) <= 1 ) {
 				// We are on our own
-				logger.info( domain , 'Received a SIGHUP signal.' , function() {
+				logger.info( domain , 'Received a SIGHUP signal.' , () => {
 					// All underlying transports have finished, we can exit safely without losing logs...
 					async.exit( 129 ) ;
 				} ) ;
 			}
-			else
-			{
+			else {
 				// Another handler should have done something about that failure
 				logger.info( domain , 'Received a SIGHUP signal.' ) ;
 			}
@@ -777,10 +723,14 @@ var consoleBackup = {
 
 
 
-var consoleReplacement ;
+function consoleReplacement( type , domain , ... args ) {
+	var message = string.escape.format( util.format( ... args ) ) ;
+	return this[ type ]( domain , message ) ;
+}
 
-Logfella.prototype.replaceConsole = function replaceConsole()
-{
+
+
+Logfella.prototype.replaceConsole = function replaceConsole() {
 	console.trace = consoleReplacement.bind( this , 'trace' , 'console' ) ;
 	console.log = consoleReplacement.bind( this , 'info' , 'console' ) ;
 	console.info = consoleReplacement.bind( this , 'info' , 'console' ) ;
@@ -790,25 +740,13 @@ Logfella.prototype.replaceConsole = function replaceConsole()
 
 
 
-Logfella.prototype.restoreConsole = function restoreConsole()
-{
+Logfella.prototype.restoreConsole = function restoreConsole() {
 	console.trace = consoleBackup.trace ;
 	console.log = consoleBackup.log ;
 	console.info = consoleBackup.info ;
 	console.warn = consoleBackup.warn ;
 	console.error = consoleBackup.error ;
 } ;
-
-
-
-function consoleReplacement( type , domain )
-{
-	var message = string.escape.format(
-		util.format.apply( undefined , Array.prototype.slice.call( arguments , 2 ) )
-	) ;
-	
-	return this[ type ].apply( this , [ domain , message ] ) ;
-}
 
 
 
@@ -849,14 +787,12 @@ Logfella.configSchema = {
 Logfella.global = Logfella.create() ;
 Logfella.global.setGlobalConfig( { minLevel: 'trace' } ) ;
 
-if ( process.browser )
-{
+if ( process.browser ) {
 	Logfella.transports.BrowserConsole = require( './BrowserConsole.transport.js' ) ;
 	Logfella.global.addTransport( 'BrowserConsole' , { minLevel: 'trace' } ) ;
 	window.Logfella = Logfella ;	// jshint ignore:line
 }
-else
-{
+else {
 	Logfella.global.addTransport( 'console' , { minLevel: 'trace' , color: true } ) ;
 	//Logfella.global.addTransport( 'files' , 'trace' , { path: __dirname + '/test/log' } ) ;
 }
@@ -868,8 +804,8 @@ else
 /*
 	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
 
-	Copyright (c) 2015 Cédric Ronvel 
-	
+	Copyright (c) 2015 Cédric Ronvel
+
 	The MIT License (MIT)
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -907,62 +843,52 @@ delete format.markup ;	// Turn style markup off
 
 
 
-function message( data , color )
-{
+function message( data , color ) {
 	var k , messageString = '' ;
-	
-	if ( data.mon )
-	{
+
+	if ( data.mon ) {
 		messageString = '\n' ;
-		
-		if ( color )
-		{
-			for ( k in data.mon )
-			{
+
+		if ( color ) {
+			for ( k in data.mon ) {
 				messageString += string.ansi.green + k + string.ansi.reset + ': ' +
 					string.ansi.cyan + data.mon[ k ] + string.ansi.reset + '\n' ;
 			}
 		}
-		else
-		{
+		else {
 			for ( k in data.mon ) { messageString += k + ': ' + data.mon[ k ] + '\n' ; }
 		}
 	}
-	else if ( Array.isArray( data.messageData ) && data.messageData.isFormat )
-	{
+	else if ( Array.isArray( data.messageData ) && data.messageData.isFormat ) {
 		//if ( color ) { messageString = string.ansi.italic + string.formatMethod.apply( { color: true } , data.messageData ) ; }
 		//else { messageString = string.formatMethod.apply( { color: false } , data.messageData ) ; }
-		
+
 		messageString = string.formatMethod.apply( color ? formatColor : format , data.messageData ) ;
 	}
-	else if ( data.messageData instanceof Error )
-	{
+	else if ( data.messageData instanceof Error ) {
 		messageString = string.inspectError( { style: color ? 'color' : 'none' } , data.messageData ) ;
 	}
-	else if ( typeof data.messageData !== 'string' )
-	{
+	else if ( typeof data.messageData !== 'string' ) {
 		messageString = string.inspect( { style: color ? 'color' : 'none' } , data.messageData ) ;
 	}
-	else
-	{
+	else {
 		// Even if messageData is not an array, it may contains markup, so it should be formated anyway
 		//messageString = data.messageData ;
 		messageString = string.formatMethod.call( color ? formatColor : format , data.messageData ) ;
 	}
-	
+
 	return messageString ;
 }
 
 
 
 // The default message formater
-exports.text = function text( data , cache )
-{
+exports.text = function text( data , cache ) {
 	var cacheKey ,
 		levelString = '' , timeString = '' , domainString = '' , idString = '' ,
 		codeString = '' , metaString = '' , messageString = '' , stackString = '' ,
 		separatorString = '' ;
-	
+
 	cacheKey = 'text-' +
 		( this.color ? 'c-' : '!c-' ) +
 		( this.indent ? 'i-' : '!i-' ) +
@@ -970,53 +896,47 @@ exports.text = function text( data , cache )
 		( this.includeCommonMeta ? 'cm-' : '!cm-' ) +
 		( this.includeUserMeta ? 'um-' : '!um-' ) +
 		this.timeFormatter.name ;
-	
+
 	//console.log( "<<< Cache key:" , cacheKey ) ;
-	
+
 	// Cache hit!
-	if ( cache[ cacheKey ] )
-	{
+	if ( cache[ cacheKey ] ) {
 		//console.log( ">>> Cache hit!" ) ;
 		return cache[ cacheKey ] ;
 	}
-	
+
 	// Build the message
 	messageString = message( data , this.color ) ;
-	
+
 	// Message indentation
-	if ( this.indent )
-	{
+	if ( this.indent ) {
 		messageString = messageString.replace( /\n/g , '\n    ' ) ;
 	}
-	
+
 	// Final style reset
 	//if ( this.color ) { messageString += string.ansi.reset ; }
-	
-	
+
+
 	// Include built-in Meta
-	if ( this.includeCommonMeta )
-	{
+	if ( this.includeCommonMeta ) {
 		timeString = this.color ?
 			string.ansi.brightCyan + this.timeFormatter( data.time ) + string.ansi.reset + ' ' :
 			this.timeFormatter( data.time ) + ' ' ;
-		
-		if ( data.domain && typeof data.domain === 'string' )
-		{
+
+		if ( data.domain && typeof data.domain === 'string' ) {
 			domainString = this.color ?
 				string.ansi.magenta + '<' + data.domain + '>' + string.ansi.reset + ' ' :
 				'<' + data.domain + '> ' ;
 		}
-		
-		if ( data.code !== undefined )
-		{
+
+		if ( data.code !== undefined ) {
 			codeString = this.color ?
 				string.ansi.green + '#' + data.code + string.ansi.reset + ' ' :
 				'#' + data.code + ' ' ;
 		}
-		
+
 		// Five letter levelName
-		switch ( data.levelName )
-		{
+		switch ( data.levelName ) {
 			case 'trace' :
 				levelString = this.color ?
 					string.ansi.brightBlack + '[TRACE]' + string.ansi.reset + ' ' :
@@ -1062,79 +982,71 @@ exports.text = function text( data , cache )
 					string.ansi.dim + '[' + ( data.levelName + '.    ' ).slice( 0 , 5 ) + ']' + string.ansi.reset + ' ' :
 					'[' + ( data.levelName + '.    ' ).slice( 0 , 5 ) + '] ' ;
 		}
-		
+
 	}
-	
-	
+
+
 	// Include process Meta
-	if ( this.includeIdMeta )
-	{
+	if ( this.includeIdMeta ) {
 		idString = this.color ?
 			string.ansi.yellow + data.hostname + string.ansi.brightBlack + '(' + data.pid + ')' + string.ansi.reset + ' ' :
 			data.hostname + '(' + data.pid + ') ' ;
 	}
-	
-	
+
+
 	// Include custom Meta
-	if ( this.includeUserMeta && data.meta )
-	{
+	if ( this.includeUserMeta && data.meta ) {
 		metaString = JSON.stringify( data.meta ) ;
-		
-		if ( metaString === '{}' )
-		{
+
+		if ( metaString === '{}' ) {
 			// Do not create metaString for empty objects
 			metaString = '' ;
 		}
-		else
-		{
+		else {
 			metaString = this.color ?
 				string.ansi.blue + metaString + string.ansi.reset + ' ' :
 				metaString + ' ' ;
 		}
 	}
-	
-	
+
+
 	// Separator, if needed
-	if ( this.includeIdMeta || this.includeCommonMeta || this.includeUserMeta )
-	{
+	if ( this.includeIdMeta || this.includeCommonMeta || this.includeUserMeta ) {
 		separatorString = this.color ?
 			string.ansi.brightBlack + '--' + string.ansi.reset + ' ' :
 			'-- ' ;
 	}
-	
-	if ( 'stack' in data )
-	{
+
+	if ( 'stack' in data ) {
 		stackString = '\n' + string.inspectStack( { style: this.color ? 'color' : 'none' } , data.stack ) ;
 	}
-	
+
 	// Construct the whole message string...
 	messageString = levelString + timeString + idString + domainString + codeString + metaString + separatorString + messageString + stackString ;
-	
+
 	// Cache it!
 	cache[ cacheKey ] = messageString ;
-	
+
 	return messageString ;
 } ;
 
 
 
 // The default message formater
-exports.json = function json( data , cache )
-{
+exports.json = function json( data , cache ) {
 	var cacheKey , str ;
-	
+
 	cacheKey = 'json-' +
 		( this.color ? 'c-' : '!c-' ) ;
-	
+
 	//console.log( "<<< Cache key:" , cacheKey ) ;
-	
+
 	// Cache hit!
-	if ( cache[ cacheKey ] )
-	{
+	if ( cache[ cacheKey ] ) {
 		//console.log( ">>> Cache hit!" ) ;
 		return cache[ cacheKey ] ;
 	}
-	
+
 	str = JSON.stringify( {
 		app: data.app ,
 		time: data.time.getTime() ,
@@ -1150,7 +1062,7 @@ exports.json = function json( data , cache )
 		messageData: data.mon ? undefined : data.messageData ,
 		message: data.mon ? undefined : message( data , this.color )
 	} ) ;
-	
+
 	cache[ cacheKey ] = str ;
 	return str ;
 } ;
@@ -1162,8 +1074,8 @@ exports.json = function json( data , cache )
 /*
 	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
 
-	Copyright (c) 2015 Cédric Ronvel 
-	
+	Copyright (c) 2015 Cédric Ronvel
+
 	The MIT License (MIT)
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -1193,30 +1105,26 @@ exports.json = function json( data , cache )
 function leadingZero( num ) { return num >= 10 ? num : '0' + num ; }
 
 // Full time formater, with date & time in ms
-exports.dateTimeMs = function dateTimeMs( timeObject )
-{
+exports.dateTimeMs = function dateTimeMs( timeObject ) {
 	return timeObject.getUTCFullYear() + '-' + leadingZero( timeObject.getUTCMonth() + 1 ) + '-' + leadingZero( timeObject.getUTCDate() ) +
 		' ' + leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) +
 		'.' + ( timeObject.getUTCMilliseconds() / 1000 ).toFixed( 3 ).slice( 2 , 5 ) ;
 } ;
 
 // Date & time in s
-exports.dateTime = function dateTime( timeObject )
-{
+exports.dateTime = function dateTime( timeObject ) {
 	return timeObject.getUTCFullYear() + '-' + leadingZero( timeObject.getUTCMonth() + 1 ) + '-' + leadingZero( timeObject.getUTCDate() ) +
 		' ' + leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) ;
 } ;
 
 // Time in ms
-exports.timeMs = function timeMs( timeObject )
-{
+exports.timeMs = function timeMs( timeObject ) {
 	return leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) +
 		'.' + ( timeObject.getUTCMilliseconds() / 1000 ).toFixed( 3 ).slice( 2 , 5 ) ;
 } ;
 
 // Time in s
-exports.time = function time( timeObject )
-{
+exports.time = function time( timeObject ) {
 	return leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) ;
 } ;
 
@@ -7775,21 +7683,21 @@ process.umask = function() { return 0; };
 },{}],21:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -7811,7 +7719,7 @@ module.exports = {
 	italic: '\x1b[3m' ,
 	underline: '\x1b[4m' ,
 	inverse: '\x1b[7m' ,
-	
+
 	defaultColor: '\x1b[39m' ,
 	black: '\x1b[30m' ,
 	red: '\x1b[31m' ,
@@ -7829,7 +7737,7 @@ module.exports = {
 	brightMagenta: '\x1b[95m' ,
 	brightCyan: '\x1b[96m' ,
 	brightWhite: '\x1b[97m' ,
-	
+
 	defaultBgColor: '\x1b[49m' ,
 	bgBlack: '\x1b[40m' ,
 	bgRed: '\x1b[41m' ,
@@ -7846,7 +7754,7 @@ module.exports = {
 	bgBrightBlue: '\x1b[104m' ,
 	bgBrightMagenta: '\x1b[105m' ,
 	bgBrightCyan: '\x1b[106m' ,
-	bgBrightWhite: '\x1b[107m' ,
+	bgBrightWhite: '\x1b[107m'
 } ;
 
 
@@ -7854,21 +7762,21 @@ module.exports = {
 },{}],22:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -7888,12 +7796,11 @@ module.exports = camel ;
 
 
 // Transform alphanum separated by underscore or minus to camel case
-camel.toCamelCase = function toCamelCase( str )
-{
+camel.toCamelCase = function toCamelCase( str ) {
 	if ( ! str || typeof str !== 'string' ) { return '' ; }
-	
-	return str.replace( /^[\s_-]*([^\s_-]+)|[\s_-]+([^\s_-]?)([^\s_-]*)/g , function( match , firstWord , firstLetter , endOfWord ) {
-		
+
+	return str.replace( /^[\s_-]*([^\s_-]+)|[\s_-]+([^\s_-]?)([^\s_-]*)/g , ( match , firstWord , firstLetter , endOfWord ) => {
+
 		if ( firstWord ) { return firstWord.toLowerCase() ; }
 		if ( ! firstLetter ) { return '' ; }
 		return firstLetter.toUpperCase() + endOfWord.toLowerCase() ;
@@ -7903,12 +7810,12 @@ camel.toCamelCase = function toCamelCase( str )
 
 
 // Transform camel case to alphanum separated by minus
-camel.camelCaseToDashed = function camelCaseToDashed( str )
-{
+camel.camelCaseToDash =
+camel.camelCaseToDashed = function camelCaseToDash( str ) {
 	if ( ! str || typeof str !== 'string' ) { return '' ; }
-	
-	return str.replace( /^([A-Z])|([A-Z])/g , function( match , firstLetter , letter ) {
-		
+
+	return str.replace( /^([A-Z])|([A-Z])/g , ( match , firstLetter , letter ) => {
+
 		if ( firstLetter ) { return firstLetter.toLowerCase() ; }
 		return '-' + letter.toLowerCase() ;
 	} ) ;
@@ -7919,21 +7826,21 @@ camel.camelCaseToDashed = function camelCaseToDashed( str )
 },{}],23:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -7956,7 +7863,7 @@ camel.camelCaseToDashed = function camelCaseToDashed( str )
 // From Mozilla Developper Network
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
 exports.regExp = exports.regExpPattern = function escapeRegExpPattern( str ) {
-	return str.replace( /([.*+?^${}()|\[\]\/\\])/g , '\\$1' ) ;
+	return str.replace( /([.*+?^${}()|[\]/\\])/g , '\\$1' ) ;
 } ;
 
 exports.regExpReplacement = function escapeRegExpReplacement( str ) {
@@ -7982,16 +7889,18 @@ exports.jsDoubleQuote = function escapeJsDoubleQuote( str ) {
 
 
 exports.shellArg = function escapeShellArg( str ) {
-	return '\'' + str.replace( /\'/g , "'\\''" ) + '\'' ;
+	return '\'' + str.replace( /'/g , "'\\''" ) + '\'' ;
 } ;
 
 
 
-var escapeControlMap = { '\r': '\\r', '\n': '\\n', '\t': '\\t', '\x7f': '\\x7f' } ;
+var escapeControlMap = {
+	'\r': '\\r' , '\n': '\\n' , '\t': '\\t' , '\x7f': '\\x7f'
+} ;
 
 // Escape \r \n \t so they become readable again, escape all ASCII control character as well, using \x syntaxe
 exports.control = function escapeControl( str ) {
-	return str.replace( /[\x00-\x1f\x7f]/g , function( match ) {
+	return str.replace( /[\x00-\x1f\x7f]/g , ( match ) => {
 		if ( escapeControlMap[ match ] !== undefined ) { return escapeControlMap[ match ] ; }
 		var hex = match.charCodeAt( 0 ).toString( 16 ) ;
 		if ( hex.length % 2 ) { hex = '0' + hex ; }
@@ -8001,21 +7910,23 @@ exports.control = function escapeControl( str ) {
 
 
 
-var escapeHtmlMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' } ;
+var escapeHtmlMap = {
+	'&': '&amp;' , '<': '&lt;' , '>': '&gt;' , '"': '&quot;' , "'": '&#039;'
+} ;
 
 // Only escape & < > so this is suited for content outside tags
 exports.html = function escapeHtml( str ) {
-	return str.replace( /[&<>]/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
+	return str.replace( /[&<>]/g , ( match ) => { return escapeHtmlMap[ match ] ; } ) ;
 } ;
 
 // Escape & < > " so this is suited for content inside a double-quoted attribute
 exports.htmlAttr = function escapeHtmlAttr( str ) {
-	return str.replace( /[&<>"]/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
+	return str.replace( /[&<>"]/g , ( match ) => { return escapeHtmlMap[ match ] ; } ) ;
 } ;
 
 // Escape all html special characters & < > " '
 exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
-	return str.replace( /[&<>"']/g , function( match ) { return escapeHtmlMap[ match ] ; } ) ;
+	return str.replace( /[&<>"']/g , ( match ) => { return escapeHtmlMap[ match ] ; } ) ;
 } ;
 
 
@@ -8024,21 +7935,21 @@ exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
 (function (Buffer){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -8085,7 +7996,7 @@ var ansi = require( './ansi.js' ) ;
 	%D		drop
 	%F		filter function existing in the 'this' context, e.g. %[filter:%a%a]F
 	%a		argument for a function
-	
+
 	Candidate format:
 	%A		for automatic type?
 	%c		for char? (can receive a string or an integer translated into an UTF8 chars)
@@ -8094,115 +8005,100 @@ var ansi = require( './ansi.js' ) ;
 	%e		for scientific notation?
 */
 
-exports.formatMethod = function format( str )
-{
-	if ( typeof str !== 'string' )
-	{
+exports.formatMethod = function format( ... args ) {
+	var str = args[ 0 ] ;
+
+	if ( typeof str !== 'string' ) {
 		if ( ! str ) { str = '' ; }
 		else if ( typeof str.toString === 'function' ) { str = str.toString() ; }
 		else { str = '' ; }
 	}
-	
-	var self = this , arg , value ,
-		autoIndex = 1 , args = arguments , length = arguments.length ,
+
+	var arg , value ,
+		autoIndex = 1 , length = args.length ,
 		hasMarkup = false , shift = null , markupStack = [] ;
-	
-	if ( this.markupReset && this.startingMarkupReset )
-	{
+
+	if ( this.markupReset && this.startingMarkupReset ) {
 		str = ( typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ) + str ;
 	}
-	
+
 	//console.log( 'format args:' , arguments ) ;
-	
+
 	// /!\ each changes here should be reported on string.format.count() and string.format.hasFormatting() too /!\
 	//str = str.replace( /\^(.?)|%(?:([+-]?)([0-9]*)(?:\/([^\/]*)\/)?([a-zA-Z%])|\[([a-zA-Z0-9_]+)(?::([^\]]*))?\])/g ,
 	str = str.replace( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/g ,
-		function( match , markup , doublePercent , relative , index , modeArg , mode ) {		// jshint ignore:line
-			
+		( match , markup , doublePercent , relative , index , modeArg , mode ) => {		// jshint ignore:line
+
 			var replacement , i , n , depth , tmp , fn , fnArgString , argMatches , argList = [] ;
-			
+
 			//console.log( 'replaceArgs:' , arguments ) ;
-			if ( doublePercent ) { return '%'; }
-			
-			if ( markup )
-			{
+			if ( doublePercent ) { return '%' ; }
+
+			if ( markup ) {
 				if ( markup === '^' ) { return '^' ; }
-				
-				if ( self.shiftMarkup && self.shiftMarkup[ markup ] )
-				{
-					shift = self.shiftMarkup[ markup ] ;
+
+				if ( this.shiftMarkup && this.shiftMarkup[ markup ] ) {
+					shift = this.shiftMarkup[ markup ] ;
 					return '' ;
 				}
-				
-				if ( shift )
-				{
-					if ( ! self.shiftedMarkup || ! self.shiftedMarkup[ shift ] || ! self.shiftedMarkup[ shift ][ markup ] )
-					{
+
+				if ( shift ) {
+					if ( ! this.shiftedMarkup || ! this.shiftedMarkup[ shift ] || ! this.shiftedMarkup[ shift ][ markup ] ) {
 						return '' ;
 					}
-					
+
 					hasMarkup = true ;
-					
-					if ( typeof self.shiftedMarkup[ shift ][ markup ] === 'function' )
-					{
-						replacement = self.shiftedMarkup[ shift ][ markup ]( markupStack ) ;
+
+					if ( typeof this.shiftedMarkup[ shift ][ markup ] === 'function' ) {
+						replacement = this.shiftedMarkup[ shift ][ markup ]( markupStack ) ;
 						// method should manage markup stack themselves
 					}
-					else
-					{
-						replacement = self.shiftedMarkup[ shift ][ markup ] ;
+					else {
+						replacement = this.shiftedMarkup[ shift ][ markup ] ;
 						markupStack.push( replacement ) ;
 					}
-					
+
 					shift = null ;
 				}
-				else
-				{
-					if ( ! self.markup || ! self.markup[ markup ] )
-					{
+				else {
+					if ( ! this.markup || ! this.markup[ markup ] ) {
 						return '' ;
 					}
-					
+
 					hasMarkup = true ;
-					
-					if ( typeof self.markup[ markup ] === 'function' )
-					{
-						replacement = self.markup[ markup ]( markupStack ) ;
+
+					if ( typeof this.markup[ markup ] === 'function' ) {
+						replacement = this.markup[ markup ]( markupStack ) ;
 						// method should manage markup stack themselves
 					}
-					else
-					{
-						replacement = self.markup[ markup ] ;
+					else {
+						replacement = this.markup[ markup ] ;
 						markupStack.push( replacement ) ;
 					}
 				}
-				
+
 				return replacement ;
 			}
-			
-			
-			if ( index )
-			{
-				index = parseInt( index ) ;
-				
-				if ( relative )
-				{
+
+
+			if ( index ) {
+				index = parseInt( index , 10 ) ;
+
+				if ( relative ) {
 					if ( relative === '+' ) { index = autoIndex + index ; }
 					else if ( relative === '-' ) { index = autoIndex - index ; }
 				}
 			}
-			else
-			{
+			else {
 				index = autoIndex ;
 			}
-			
+
 			autoIndex ++ ;
-			
+
 			if ( index >= length || index < 1 ) { arg = undefined ; }
 			else { arg = args[ index ] ; }
-			
-			switch ( mode )
-			{
+
+			switch ( mode ) {
 				case 's' :	// string
 					if ( arg === null || arg === undefined ) { return '' ; }
 					if ( typeof arg === 'string' ) { return arg ; }
@@ -8212,11 +8108,9 @@ exports.formatMethod = function format( str )
 				case 'f' :	// float
 					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg !== 'number' ) { return '0' ; }
-					if ( modeArg !== undefined )
-					{
+					if ( modeArg !== undefined ) {
 						// Use jQuery number format?
-						switch ( modeArg[ 0 ] )
-						{
+						switch ( modeArg[ 0 ] ) {
 							case 'p' :
 								n = parseInt( modeArg.slice( 1 ) , 10 ) ;
 								if ( n >= 1 ) { arg = arg.toPrecision( n ) ; }
@@ -8230,33 +8124,33 @@ exports.formatMethod = function format( str )
 					return '' + arg ;
 				case 'd' :
 				case 'i' :	// integer decimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.floor( arg ) ; }
 					return '0' ;
 				case 'u' :	// unsigned decimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ) ; }
 					return '0' ;
 				case 'U' :	// unsigned positive decimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 1 ) ; }
 					return '1' ;
 				case 'x' :	// unsigned hexadecimal, force pair of symbole
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg !== 'number' ) { return '0' ; }
 					value = '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ;
 					if ( value.length % 2 ) { value = '0' + value ; }
 					return value ;
 				case 'h' :	// unsigned hexadecimal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ; }
 					return '0' ;
 				case 'o' :	// unsigned octal
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 8 ) ; }
 					return '0' ;
 				case 'b' :	// unsigned binary
-					if ( typeof arg === 'string' ) { arg = parseInt( arg ) ; }
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 2 ) ; }
 					return '0' ;
 				case 'z' :	// base64
@@ -8270,82 +8164,74 @@ exports.formatMethod = function format( str )
 				case 'I' :
 					depth = 3 ;
 					if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
-					return inspect( { depth: depth , style: ( self && self.color ? 'color' : 'none' ) } , arg ) ;
+					return inspect( { depth: depth , style: ( this && this.color ? 'color' : 'none' ) } , arg ) ;
 				case 'Y' :
 					depth = 3 ;
 					if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
 					return inspect( {
-							depth: depth ,
-							style: ( self && self.color ? 'color' : 'none' ) ,
-							noFunc: true ,
-							enumOnly: true ,
-							noDescriptor: true
-						} ,
-						arg ) ;
+						depth: depth ,
+						style: ( this && this.color ? 'color' : 'none' ) ,
+						noFunc: true ,
+						enumOnly: true ,
+						noDescriptor: true
+					} ,
+					arg ) ;
 				case 'E' :
-					return inspectError( { style: ( self && self.color ? 'color' : 'none' ) } , arg ) ;
+					return inspectError( { style: ( this && this.color ? 'color' : 'none' ) } , arg ) ;
 				case 'J' :
 					return JSON.stringify( arg ) ;
 				case 'D' :
 					return '' ;
 				case 'F' :	// Function
-					
+
 					autoIndex -- ;	// %F does not eat any arg
-					
+
 					if ( modeArg === undefined ) { return '' ; }
 					tmp = modeArg.split( ':' ) ;
 					fn = tmp[ 0 ] ;
 					fnArgString = tmp[ 1 ] ;
 					if ( ! fn ) { return '' ; }
-					
-					if ( fnArgString && ( argMatches = fnArgString.match( /%([+-]?)([0-9]*)[a-zA-Z]/g ) ) )
-					{
+
+					if ( fnArgString && ( argMatches = fnArgString.match( /%([+-]?)([0-9]*)[a-zA-Z]/g ) ) ) {
 						//console.log( argMatches ) ;
 						//console.log( fnArgString ) ;
-						for ( i = 0 ; i < argMatches.length ; i ++ )
-						{
+						for ( i = 0 ; i < argMatches.length ; i ++ ) {
 							relative = argMatches[ i ][ 1 ] ;
 							index = argMatches[ i ][ 2 ] ;
-							
-							if ( index )
-							{
+
+							if ( index ) {
 								index = parseInt( index , 10 ) ;
-								
-								if ( relative )
-								{
+
+								if ( relative ) {
 									if ( relative === '+' ) { index = autoIndex + index ; }		// jshint ignore:line
 									else if ( relative === '-' ) { index = autoIndex - index ; }	// jshint ignore:line
 								}
 							}
-							else
-							{
+							else {
 								index = autoIndex ;
 							}
-							
+
 							autoIndex ++ ;
-							
+
 							if ( index >= length || index < 1 ) { argList[ i ] = undefined ; }
 							else { argList[ i ] = args[ index ] ; }
 						}
 					}
-					
-					if ( ! self || ! self.fn || typeof self.fn[ fn ] !== 'function' ) { return '' ; }
-					return self.fn[ fn ].apply( self , argList ) ;
-				
+
+					if ( ! this || ! this.fn || typeof this.fn[ fn ] !== 'function' ) { return '' ; }
+					return this.fn[ fn ].apply( this , argList ) ;
+
 				default :
 					return '' ;
 			}
-	} ) ;
-	
-	if ( hasMarkup && this.markupReset && this.endingMarkupReset )
-	{
+		} ) ;
+
+	if ( hasMarkup && this.markupReset && this.endingMarkupReset ) {
 		str += typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ;
 	}
-	
-	if ( this.extraArguments )
-	{
-		for ( ; autoIndex < length ; autoIndex ++ )
-		{
+
+	if ( this.extraArguments ) {
+		for ( ; autoIndex < length ; autoIndex ++ ) {
 			arg = args[ autoIndex ] ;
 			if ( arg === null || arg === undefined ) { continue ; }
 			else if ( typeof arg === 'string' ) { str += arg ; }
@@ -8353,7 +8239,7 @@ exports.formatMethod = function format( str )
 			else if ( typeof arg.toString === 'function' ) { str += arg.toString() ; }
 		}
 	}
-	
+
 	return str ;
 } ;
 
@@ -8370,13 +8256,13 @@ var defaultFormatter = {
 	markup: {
 		":": ansi.reset ,
 		" ": ansi.reset + " " ,
-		
+
 		"-": ansi.dim ,
 		"+": ansi.bold ,
 		"_": ansi.underline ,
 		"/": ansi.italic ,
 		"!": ansi.inverse ,
-		
+
 		"b": ansi.blue ,
 		"B": ansi.brightBlue ,
 		"c": ansi.cyan ,
@@ -8398,7 +8284,7 @@ var defaultFormatter = {
 		background: {
 			":": ansi.reset ,
 			" ": ansi.reset + " " ,
-			
+
 			"b": ansi.bgBlue ,
 			"B": ansi.bgBrightBlue ,
 			"c": ansi.bgCyan ,
@@ -8424,86 +8310,73 @@ exports.format.default = defaultFormatter ;
 
 
 
-exports.markupMethod = function markup( str )
-{
-	if ( typeof str !== 'string' )
-	{
+exports.markupMethod = function markup_( str ) {
+	if ( typeof str !== 'string' ) {
 		if ( ! str ) { str = '' ; }
 		else if ( typeof str.toString === 'function' ) { str = str.toString() ; }
 		else { str = '' ; }
 	}
-	
-	var self = this , hasMarkup = false , shift = null , markupStack = [] ;
-	
-	if ( this.markupReset && this.startingMarkupReset )
-	{
+
+	var hasMarkup = false , shift = null , markupStack = [] ;
+
+	if ( this.markupReset && this.startingMarkupReset ) {
 		str = ( typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ) + str ;
 	}
-	
+
 	//console.log( 'format args:' , arguments ) ;
-	
-	str = str.replace( /\^(.?)/g , function( match , markup ) {
+
+	str = str.replace( /\^(.?)/g , ( match , markup ) => {
 		var replacement ;
-		
+
 		if ( markup === '^' ) { return '^' ; }
-		
-		if ( self.shiftMarkup && self.shiftMarkup[ markup ] )
-		{
-			shift = self.shiftMarkup[ markup ] ;
+
+		if ( this.shiftMarkup && this.shiftMarkup[ markup ] ) {
+			shift = this.shiftMarkup[ markup ] ;
 			return '' ;
 		}
-		
-		if ( shift )
-		{
-			if ( ! self.shiftedMarkup || ! self.shiftedMarkup[ shift ] || ! self.shiftedMarkup[ shift ][ markup ] )
-			{
+
+		if ( shift ) {
+			if ( ! this.shiftedMarkup || ! this.shiftedMarkup[ shift ] || ! this.shiftedMarkup[ shift ][ markup ] ) {
 				return '' ;
 			}
-			
+
 			hasMarkup = true ;
-			
-			if ( typeof self.shiftedMarkup[ shift ][ markup ] === 'function' )
-			{
-				replacement = self.shiftedMarkup[ shift ][ markup ]( markupStack ) ;
+
+			if ( typeof this.shiftedMarkup[ shift ][ markup ] === 'function' ) {
+				replacement = this.shiftedMarkup[ shift ][ markup ]( markupStack ) ;
 				// method should manage markup stack themselves
 			}
-			else
-			{
-				replacement = self.shiftedMarkup[ shift ][ markup ] ;
+			else {
+				replacement = this.shiftedMarkup[ shift ][ markup ] ;
 				markupStack.push( replacement ) ;
 			}
-			
+
 			shift = null ;
 		}
-		else
-		{
-			if ( ! self.markup || ! self.markup[ markup ] )
-			{
+		else {
+			if ( ! this.markup || ! this.markup[ markup ] ) {
 				return '' ;
 			}
-			
+
 			hasMarkup = true ;
-			
-			if ( typeof self.markup[ markup ] === 'function' )
-			{
-				replacement = self.markup[ markup ]( markupStack ) ;
+
+			if ( typeof this.markup[ markup ] === 'function' ) {
+				replacement = this.markup[ markup ]( markupStack ) ;
 				// method should manage markup stack themselves
 			}
-			else
-			{
-				replacement = self.markup[ markup ] ;
+			else {
+				replacement = this.markup[ markup ] ;
 				markupStack.push( replacement ) ;
 			}
 		}
-		
+
 		return replacement ;
 	} ) ;
-	
-	if ( hasMarkup && this.markupReset && this.endingMarkupReset )
-	{
+
+	if ( hasMarkup && this.markupReset && this.endingMarkupReset ) {
 		str += typeof this.markupReset === 'function' ? this.markupReset( markupStack ) : this.markupReset ;
 	}
-	
+
 	return str ;
 } ;
 
@@ -8514,52 +8387,46 @@ exports.markup = exports.markupMethod.bind( defaultFormatter ) ;
 
 
 // Count the number of parameters needed for this string
-exports.format.count = function formatCount( str )
-{
+exports.format.count = function formatCount( str ) {
 	var match , index , relative , autoIndex = 1 , maxIndex = 0 ;
-	
+
 	if ( typeof str !== 'string' ) { return 0 ; }
-	
+
 	// This regex differs slightly from the main regex: we do not count '%%' and %F is excluded
 	var regexp = /%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-EG-Z])/g ;
-	
-	
-	while ( ( match = regexp.exec( str ) ) !== null )
-	{
+
+
+	while ( ( match = regexp.exec( str ) ) !== null ) {
 		//console.log( match ) ;
 		relative = match[ 1 ] ;
 		index = match[ 2 ] ;
-		
-		if ( index )
-		{
+
+		if ( index ) {
 			index = parseInt( index , 10 ) ;
-			
-			if ( relative )
-			{
+
+			if ( relative ) {
 				if ( relative === '+' ) { index = autoIndex + index ; }
 				else if ( relative === '-' ) { index = autoIndex - index ; }
 			}
 		}
-		else
-		{
+		else {
 			index = autoIndex ;
 		}
-		
+
 		autoIndex ++ ;
-		
+
 		if ( maxIndex < index ) { maxIndex = index ; }
 	}
-	
+
 	return maxIndex ;
 } ;
 
 
 
 // Tell if this string contains formatter chars
-exports.format.hasFormatting = function hasFormatting( str )
-{
+exports.format.hasFormatting = function hasFormatting( str ) {
 	if ( str.search( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/ ) !== -1 ) { return true ; }
-	else { return false ; }
+	return false ;
 } ;
 
 
@@ -8569,21 +8436,21 @@ exports.format.hasFormatting = function hasFormatting( str )
 (function (Buffer,process){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -8613,13 +8480,15 @@ var ansi = require( './ansi.js' ) ;
 
 /*
 	Inspect a variable, return a string ready to be displayed with console.log(), or even as an HTML output.
-	
+
 	Options:
 		* style:
 			* 'none': (default) normal output suitable for console.log() or writing in a file
 			* 'color': colorful output suitable for terminal
 			* 'html': html output
+			* any object: full controle, inheriting from 'none'
 		* depth: depth limit, default: 3
+		* maxLength: length limit for strings, default: 200
 		* noFunc: do not display functions
 		* noDescriptor: do not display descriptor information
 		* noType: do not display type and constructor
@@ -8629,26 +8498,28 @@ var ansi = require( './ansi.js' ) ;
 		* sort: sort the keys
 		* minimal: imply noFunc: true, noDescriptor: true, noType: true, enumOnly: true, proto: false and funcDetails: false.
 		  Display a minimal JSON-like output
+		* protoBlackList: `Set` of blacklisted object prototype (will not recurse inside it)
+		* propertyBlackList: `Set` of blacklisted property names (will not even display it)
 		* useInspect? use .inspect() method when available on an object
 */
 
-function inspect( options , variable )
-{
+function inspect( options , variable ) {
 	if ( arguments.length < 2 ) { variable = options ; options = {} ; }
 	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
+
 	var runtime = { depth: 0 , ancestors: [] } ;
-	
+
 	if ( ! options.style ) { options.style = inspectStyle.none ; }
 	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
-	
+	else { options.style = Object.assign( {} , inspectStyle.none , options.style ) ; }
+
 	if ( options.depth === undefined ) { options.depth = 3 ; }
-	
+	if ( options.maxLength === undefined ) { options.maxLength = 200 ; }
+
 	// /!\ nofunc is deprecated
 	if ( options.nofunc ) { options.noFunc = true ; }
-	
-	if ( options.minimal )
-	{
+
+	if ( options.minimal ) {
 		options.noFunc = true ;
 		options.noDescriptor = true ;
 		options.noType = true ;
@@ -8656,217 +8527,193 @@ function inspect( options , variable )
 		options.funcDetails = false ;
 		options.proto = false ;
 	}
-	
+
 	return inspect_( runtime , options , variable ) ;
 }
 
 
 
-function inspect_( runtime , options , variable )
-{
-	var i , funcName , length , propertyList , constructor , keyIsProperty ,
+function inspect_( runtime , options , variable ) {
+	var i , funcName , length , proto , propertyList , constructor , keyIsProperty ,
 		type , pre , indent , isArray , isFunc , specialObject ,
 		str = '' , key = '' , descriptorStr = '' , descriptor , nextAncestors ;
-	
-	
+
+
 	// Prepare things (indentation, key, descriptor, ... )
-	
+
 	type = typeof variable ;
 	indent = options.style.tab.repeat( runtime.depth ) ;
-	
+
 	if ( type === 'function' && options.noFunc ) { return '' ; }
-	
-	if ( runtime.key !== undefined )
-	{
-		if ( runtime.descriptor )
-		{
+
+	if ( runtime.key !== undefined ) {
+		if ( runtime.descriptor ) {
 			descriptorStr = [] ;
-			
+
 			if ( ! runtime.descriptor.configurable ) { descriptorStr.push( '-conf' ) ; }
 			if ( ! runtime.descriptor.enumerable ) { descriptorStr.push( '-enum' ) ; }
-			
+
 			// Already displayed by runtime.forceType
 			//if ( runtime.descriptor.get || runtime.descriptor.set ) { descriptorStr.push( 'getter/setter' ) ; } else
 			if ( ! runtime.descriptor.writable ) { descriptorStr.push( '-w' ) ; }
-			
+
 			//if ( descriptorStr.length ) { descriptorStr = '(' + descriptorStr.join( ' ' ) + ')' ; }
 			if ( descriptorStr.length ) { descriptorStr = descriptorStr.join( ' ' ) ; }
 			else { descriptorStr = '' ; }
 		}
-		
-		if ( runtime.keyIsProperty )
-		{
-			if ( keyNeedingQuotes( runtime.key ) )
-			{
+
+		if ( runtime.keyIsProperty ) {
+			if ( keyNeedingQuotes( runtime.key ) ) {
 				key = '"' + options.style.key( runtime.key ) + '": ' ;
 			}
-			else
-			{
+			else {
 				key = options.style.key( runtime.key ) + ': ' ;
 			}
 		}
-		else
-		{
+		else {
 			key = '[' + options.style.index( runtime.key ) + '] ' ;
 		}
-		
+
 		if ( descriptorStr ) { descriptorStr = ' ' + options.style.type( descriptorStr ) ; }
 	}
-	
+
 	pre = runtime.noPre ? '' : indent + key ;
-	
-	
+
+
 	// Describe the current variable
-	
-	if ( variable === undefined )
-	{
+
+	if ( variable === undefined ) {
 		str += pre + options.style.constant( 'undefined' ) + descriptorStr + options.style.nl ;
 	}
-	else if ( variable === null )
-	{
+	else if ( variable === null ) {
 		str += pre + options.style.constant( 'null' ) + descriptorStr + options.style.nl ;
 	}
-	else if ( variable === false )
-	{
+	else if ( variable === false ) {
 		str += pre + options.style.constant( 'false' ) + descriptorStr + options.style.nl ;
 	}
-	else if ( variable === true )
-	{
+	else if ( variable === true ) {
 		str += pre + options.style.constant( 'true' ) + descriptorStr + options.style.nl ;
 	}
-	else if ( type === 'number' )
-	{
+	else if ( type === 'number' ) {
 		str += pre + options.style.number( variable.toString() ) +
 			( options.noType ? '' : ' ' + options.style.type( 'number' ) ) +
 			descriptorStr + options.style.nl ;
 	}
-	else if ( type === 'string' )
-	{
-		str += pre + '"' + options.style.string( escape.control( variable ) ) + '" ' +
-			( options.noType ? '' : options.style.type( 'string' ) + options.style.length( '(' + variable.length + ')' ) ) +
-			descriptorStr + options.style.nl ;
+	else if ( type === 'string' ) {
+		if ( variable.length > options.maxLength ) {
+			str += pre + '"' + options.style.string( escape.control( variable.slice( 0 , options.maxLength - 1 ) ) ) + '…" ' +
+				( options.noType ? '' : options.style.type( 'string' ) + options.style.length( '(' + variable.length + ' - TRUNCATED)' ) ) +
+				descriptorStr + options.style.nl ;
+		}
+		else {
+			str += pre + '"' + options.style.string( escape.control( variable ) ) + '" ' +
+				( options.noType ? '' : options.style.type( 'string' ) + options.style.length( '(' + variable.length + ')' ) ) +
+				descriptorStr + options.style.nl ;
+		}
 	}
-	else if ( Buffer.isBuffer( variable ) )
-	{
+	else if ( Buffer.isBuffer( variable ) ) {
 		str += pre + options.style.inspect( variable.inspect() ) + ' ' +
 			( options.noType ? '' : options.style.type( 'Buffer' ) + options.style.length( '(' + variable.length + ')' ) ) +
 			descriptorStr + options.style.nl ;
 	}
-	else if ( type === 'object' || type === 'function' )
-	{
+	else if ( type === 'object' || type === 'function' ) {
 		funcName = length = '' ;
 		isFunc = false ;
-		if ( type === 'function' )
-		{
+		if ( type === 'function' ) {
 			isFunc = true ;
 			funcName = ' ' + options.style.funcName( ( variable.name ? variable.name : '(anonymous)' ) ) ;
 			length = options.style.length( '(' + variable.length + ')' ) ;
 		}
-		
+
 		isArray = false ;
-		if ( Array.isArray( variable ) )
-		{
+		if ( Array.isArray( variable ) ) {
 			isArray = true ;
 			length = options.style.length( '(' + variable.length + ')' ) ;
 		}
-		
+
 		if ( ! variable.constructor ) { constructor = '(no constructor)' ; }
 		else if ( ! variable.constructor.name ) { constructor = '(anonymous)' ; }
 		else { constructor = variable.constructor.name ; }
-		
+
 		constructor = options.style.constructorName( constructor ) ;
-		
+		proto = Object.getPrototypeOf( variable ) ;
+
 		str += pre ;
-		
-		if ( ! options.noType )
-		{
+
+		if ( ! options.noType ) {
 			if ( runtime.forceType ) { str += options.style.type( runtime.forceType ) ; }
 			else { str += constructor + funcName + length + ' ' + options.style.type( type ) + descriptorStr ; }
-			
+
 			if ( ! isFunc || options.funcDetails ) { str += ' ' ; }	// if no funcDetails imply no space here
 		}
-		
+
 		propertyList = Object.getOwnPropertyNames( variable ) ;
-		
+
 		if ( options.sort ) { propertyList.sort() ; }
-		
+
 		// Special Objects
 		specialObject = specialObjectSubstitution( variable ) ;
-		
-		if ( specialObject !== undefined )
-		{
+
+		if ( options.protoBlackList && options.protoBlackList.has( proto ) ) {
+			str += options.style.limit( '[skip]' ) + options.style.nl ;
+		}
+		else if ( specialObject !== undefined ) {
 			str += '=> ' + inspect_( {
-					depth: runtime.depth ,
-					ancestors: runtime.ancestors ,
-					noPre: true
-				} ,
-				options ,
-				specialObject
+				depth: runtime.depth ,
+				ancestors: runtime.ancestors ,
+				noPre: true
+			} ,
+			options ,
+			specialObject
 			) ;
 		}
-		else if ( isFunc && ! options.funcDetails )
-		{
+		else if ( isFunc && ! options.funcDetails ) {
 			str += options.style.nl ;
 		}
-		else if ( ! propertyList.length && ! options.proto )
-		{
+		else if ( ! propertyList.length && ! options.proto ) {
 			str += '{}' + options.style.nl ;
 		}
-		else if ( runtime.depth >= options.depth )
-		{
+		else if ( runtime.depth >= options.depth ) {
 			str += options.style.limit( '[depth limit]' ) + options.style.nl ;
 		}
-		else if ( runtime.ancestors.indexOf( variable ) !== -1 )
-		{
+		else if ( runtime.ancestors.indexOf( variable ) !== -1 ) {
 			str += options.style.limit( '[circular]' ) + options.style.nl ;
 		}
-		else
-		{
+		else {
 			str += ( isArray && options.noType ? '[' : '{' ) + options.style.nl ;
-			
+
 			// Do not use .concat() here, it doesn't works as expected with arrays...
 			nextAncestors = runtime.ancestors.slice() ;
 			nextAncestors.push( variable ) ;
-			
-			for ( i = 0 ; i < propertyList.length ; i ++ )
-			{
+
+			for ( i = 0 ; i < propertyList.length ; i ++ ) {
+				if ( ! isArray && options.propertyBlackList && options.propertyBlackList.has( propertyList[ i ] ) ) {
+					//str += options.style.limit( '[skip]' ) + options.style.nl ;
+					continue ;
+				}
+
 				try {
 					descriptor = Object.getOwnPropertyDescriptor( variable , propertyList[ i ] ) ;
-					
+
 					if ( ! descriptor.enumerable && options.enumOnly ) { continue ; }
-					
+
 					keyIsProperty = ! isArray || ! descriptor.enumerable || isNaN( propertyList[ i ] ) ;
-					
-					if ( ! options.noDescriptor && ( descriptor.get || descriptor.set ) )
-					{
+
+					if ( ! options.noDescriptor && ( descriptor.get || descriptor.set ) ) {
 						str += inspect_( {
-								depth: runtime.depth + 1 ,
-								ancestors: nextAncestors ,
-								key: propertyList[ i ] ,
-								keyIsProperty: keyIsProperty ,
-								descriptor: descriptor ,
-								forceType: 'getter/setter'
-							} ,
-							options ,
-							{ get: descriptor.get , set: descriptor.set }
+							depth: runtime.depth + 1 ,
+							ancestors: nextAncestors ,
+							key: propertyList[ i ] ,
+							keyIsProperty: keyIsProperty ,
+							descriptor: descriptor ,
+							forceType: 'getter/setter'
+						} ,
+						options ,
+						{ get: descriptor.get , set: descriptor.set }
 						) ;
 					}
-					else
-					{
+					else {
 						str += inspect_( {
-								depth: runtime.depth + 1 ,
-								ancestors: nextAncestors ,
-								key: propertyList[ i ] ,
-								keyIsProperty: keyIsProperty ,
-								descriptor: options.noDescriptor ? undefined : descriptor
-							} ,
-							options ,
-							variable[ propertyList[ i ] ]
-						) ;
-					}
-				}
-				catch ( error ) {
-					str += inspect_( {
 							depth: runtime.depth + 1 ,
 							ancestors: nextAncestors ,
 							key: propertyList[ i ] ,
@@ -8874,36 +8721,47 @@ function inspect_( runtime , options , variable )
 							descriptor: options.noDescriptor ? undefined : descriptor
 						} ,
 						options ,
-						error
+						variable[ propertyList[ i ] ]
+						) ;
+					}
+				}
+				catch ( error ) {
+					str += inspect_( {
+						depth: runtime.depth + 1 ,
+						ancestors: nextAncestors ,
+						key: propertyList[ i ] ,
+						keyIsProperty: keyIsProperty ,
+						descriptor: options.noDescriptor ? undefined : descriptor
+					} ,
+					options ,
+					error
 					) ;
 				}
 			}
-			
-			if ( options.proto )
-			{
+
+			if ( options.proto ) {
 				str += inspect_( {
-						depth: runtime.depth + 1 ,
-						ancestors: nextAncestors ,
-						key: '__proto__' ,
-						keyIsProperty: true
-					} ,
-					options ,
-					variable.__proto__	// jshint ignore:line
+					depth: runtime.depth + 1 ,
+					ancestors: nextAncestors ,
+					key: '__proto__' ,
+					keyIsProperty: true
+				} ,
+				options ,
+				proto
 				) ;
 			}
-			
+
 			str += indent + ( isArray && options.noType ? ']' : '}' ) + options.style.nl ;
 		}
 	}
-	
-	
+
+
 	// Finalizing
-	
-	if ( runtime.depth === 0 )
-	{
+
+	if ( runtime.depth === 0 ) {
 		if ( options.style === 'html' ) { str = escape.html( str ) ; }
 	}
-	
+
 	return str ;
 }
 
@@ -8911,8 +8769,7 @@ exports.inspect = inspect ;
 
 
 
-function keyNeedingQuotes( key )
-{
+function keyNeedingQuotes( key ) {
 	if ( ! key.length ) { return true ; }
 	return false ;
 }
@@ -8920,33 +8777,32 @@ function keyNeedingQuotes( key )
 
 
 // Some special object are better written down when substituted by something else
-function specialObjectSubstitution( variable )
-{
-	switch ( variable.constructor.name )
-	{
+function specialObjectSubstitution( variable ) {
+	switch ( variable.constructor.name ) {
+		case 'String' :
+			if ( variable instanceof String ) {
+				return variable.toString() ;
+			}
+			break ;
 		case 'Date' :
-			if ( variable instanceof Date )
-			{
+			if ( variable instanceof Date ) {
 				return variable.toString() + ' [' + variable.getTime() + ']' ;
 			}
 			break ;
 		case 'Set' :
-			if ( typeof Set === 'function' && variable instanceof Set )
-			{
+			if ( typeof Set === 'function' && variable instanceof Set ) {
 				// This is an ES6 'Set' Object
 				return Array.from( variable ) ;
 			}
 			break ;
 		case 'Map' :
-			if ( typeof Map === 'function' && variable instanceof Map )
-			{
+			if ( typeof Map === 'function' && variable instanceof Map ) {
 				// This is an ES6 'Map' Object
 				return Array.from( variable ) ;
 			}
 			break ;
 		case 'ObjectID' :
-			if ( variable._bsontype )
-			{
+			if ( variable._bsontype ) {
 				// This is a MongoDB ObjectID, rather boring to display in its original form
 				// due to esoteric characters that confuse both the user and the terminal displaying it.
 				// Substitute it to its string representation
@@ -8954,38 +8810,36 @@ function specialObjectSubstitution( variable )
 			}
 			break ;
 	}
-	
+
 	return ;
 }
 
 
 
-function inspectError( options , error )
-{
+function inspectError( options , error ) {
 	var str = '' , stack , type , code ;
-	
+
 	if ( arguments.length < 2 ) { error = options ; options = {} ; }
 	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
-	if ( ! ( error instanceof Error ) )
-	{
+
+	if ( ! ( error instanceof Error ) ) {
 		return 'Not an error -- regular variable inspection: ' + inspect( options , error ) ;
 	}
-	
+
 	if ( ! options.style ) { options.style = inspectStyle.none ; }
 	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
-	
+
 	if ( error.stack ) { stack = inspectStack( options , error.stack ) ; }
-	
+
 	type = error.type || error.constructor.name ;
 	code = error.code || error.name || error.errno || error.number ;
-	
+
 	str += options.style.errorType( type ) +
 		( code ? ' [' + options.style.errorType( code ) + ']' : '' ) + ': ' ;
 	str += options.style.errorMessage( error.message ) + '\n' ;
-	
+
 	if ( stack ) { str += options.style.errorStack( stack ) + '\n' ; }
-	
+
 	return str ;
 }
 
@@ -8993,40 +8847,37 @@ exports.inspectError = inspectError ;
 
 
 
-function inspectStack( options , stack )
-{
+function inspectStack( options , stack ) {
 	if ( arguments.length < 2 ) { stack = options ; options = {} ; }
 	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
-	
+
 	if ( ! options.style ) { options.style = inspectStyle.none ; }
 	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
-	
+
 	if ( ! stack ) { return ; }
-	
-	if ( ( options.browser || process.browser ) && stack.indexOf( '@' ) !== -1 )
-	{
+
+	if ( ( options.browser || process.browser ) && stack.indexOf( '@' ) !== -1 ) {
 		// Assume a Firefox-compatible stack-trace here...
 		stack = stack
-			.replace( /[<\/]*(?=@)/g , '' )	// Firefox output some WTF </</</</< stuff in its stack trace -- removing that
-			.replace(
-				/^\s*([^@]*)\s*@\s*([^\n]*)(?::([0-9]+):([0-9]+))?$/mg ,
-				function( matches , method , file , line , column ) {	// jshint ignore:line
-					return options.style.errorStack( '    at ' ) +
+		.replace( /[</]*(?=@)/g , '' )	// Firefox output some WTF </</</</< stuff in its stack trace -- removing that
+		.replace(
+			/^\s*([^@]*)\s*@\s*([^\n]*)(?::([0-9]+):([0-9]+))?$/mg ,
+			( matches , method , file , line , column ) => {	// jshint ignore:line
+				return options.style.errorStack( '    at ' ) +
 						( method ? options.style.errorStackMethod( method ) + ' ' : '' ) +
 						options.style.errorStack( '(' ) +
 						( file ? options.style.errorStackFile( file ) : options.style.errorStack( 'unknown' ) ) +
 						( line ? options.style.errorStack( ':' ) + options.style.errorStackLine( line ) : '' ) +
 						( column ? options.style.errorStack( ':' ) + options.style.errorStackColumn( column ) : '' ) +
 						options.style.errorStack( ')' ) ;
-				}
-			) ;
+			}
+		) ;
 	}
-	else
-	{
+	else {
 		stack = stack.replace( /^[^\n]*\n/ , '' ) ;
 		stack = stack.replace(
-			/^\s*(at)\s+(?:([^\s:\(\)\[\]\n]+(?:\([^\)]+\))?)\s)?(?:\[as ([^\s:\(\)\[\]\n]+)\]\s)?(?:\(?([^:\(\)\[\]\n]+):([0-9]+):([0-9]+)\)?)?$/mg ,
-			function( matches , at , method , as , file , line , column ) {	// jshint ignore:line
+			/^\s*(at)\s+(?:([^\s:()[\]\n]+(?:\([^)]+\))?)\s)?(?:\[as ([^\s:()[\]\n]+)\]\s)?(?:\(?([^:()[\]\n]+):([0-9]+):([0-9]+)\)?)?$/mg ,
+			( matches , at , method , as , file , line , column ) => {	// jshint ignore:line
 				return options.style.errorStack( '    at ' ) +
 					( method ? options.style.errorStackMethod( method ) + ' ' : '' ) +
 					( as ? options.style.errorStack( '[as ' ) + options.style.errorStackMethodAs( as ) + options.style.errorStack( '] ' ) : '' ) +
@@ -9038,7 +8889,7 @@ function inspectStack( options , stack )
 			}
 		) ;
 	}
-	
+
 	return stack ;
 }
 
@@ -9136,21 +8987,21 @@ module.exports={"߀":"0","́":""," ":" ","Ⓐ":"A","Ａ":"A","À":"A","Á":"A",
 },{}],27:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9166,31 +9017,30 @@ module.exports={"߀":"0","́":""," ":" ","Ⓐ":"A","Ａ":"A","À":"A","Á":"A",
 
 var map = require( './latinize-map.json' ) ;
 
-module.exports = function( str )
-{
-	return str.replace( /[^\u0000-\u007e]/g , function( c ) { return map[ c ] || c ; } ) ;
+module.exports = function( str ) {
+	return str.replace( /[^\u0000-\u007e]/g , ( c ) => { return map[ c ] || c ; } ) ;
 } ;
 
-            
+
 
 },{"./latinize-map.json":26}],28:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9204,20 +9054,31 @@ module.exports = function( str )
 
 
 
-exports.resize = function resize( str , length )
-{
-	if ( str.length === length )
-	{
+exports.resize = function resize( str , length ) {
+	if ( str.length === length ) {
 		return str ;
 	}
-	else if ( str.length > length )
-	{
+	else if ( str.length > length ) {
 		return str.slice( 0 , length ) ;
 	}
-	else
-	{
-		return str + ' '.repeat( length - str.length ) ;
+
+	return str + ' '.repeat( length - str.length ) ;
+
+} ;
+
+
+
+exports.occurenceCount = function occurenceCount( str , subStr ) {
+	if ( ! str || ! subStr ) { return 0 ; }
+
+	var count = 0 , index = 0 ;
+
+	while ( ( index = str.indexOf( subStr , index ) ) !== -1 ) {
+		count ++ ;
+		index += subStr.length ;
 	}
+
+	return count ;
 } ;
 
 
@@ -9225,21 +9086,21 @@ exports.resize = function resize( str , length )
 },{}],29:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9263,44 +9124,43 @@ module.exports = polyfill ;
 
 
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/repeat
-polyfill.repeat = function(count)
-{
-  if (this === null) {
-    throw new TypeError('can\'t convert ' + this + ' to object');
-  }
-  var str = '' + this;
-  count = +count;
-  if (count !== count) {
-    count = 0;
-  }
-  if (count < 0) {
-    throw new RangeError('repeat count must be non-negative');
-  }
-  if (count === Infinity) {
-    throw new RangeError('repeat count must be less than infinity');
-  }
-  count = Math.floor(count);
-  if (str.length === 0 || count === 0) {
-    return '';
-  }
-  // Ensuring count is a 31-bit integer allows us to heavily optimize the
-  // main part. But anyway, most current (August 2014) browsers can't handle
-  // strings 1 << 28 chars or longer, so:
-  if (str.length * count >= 1 << 28) {
-    throw new RangeError('repeat count must not overflow maximum string size');
-  }
-  var rpt = '';
-  for (;;) {
-    if ((count & 1) === 1) {
-      rpt += str;
-    }
-    count >>>= 1;
-    if (count === 0) {
-      break;
-    }
-    str += str;
-  }
-  return rpt;
+polyfill.repeat = function( count ) {
+	if ( this === null ) {
+		throw new TypeError( 'can\'t convert ' + this + ' to object' ) ;
+	}
+	var str = '' + this ;
+	count = + count ;
+	if ( count !== count ) {
+		count = 0 ;
+	}
+	if ( count < 0 ) {
+		throw new RangeError( 'repeat count must be non-negative' ) ;
+	}
+	if ( count === Infinity ) {
+		throw new RangeError( 'repeat count must be less than infinity' ) ;
+	}
+	count = Math.floor( count ) ;
+	if ( str.length === 0 || count === 0 ) {
+		return '' ;
+	}
+	// Ensuring count is a 31-bit integer allows us to heavily optimize the
+	// main part. But anyway, most current (August 2014) browsers can't handle
+	// strings 1 << 28 chars or longer, so:
+	if ( str.length * count >= 1 << 28 ) {
+		throw new RangeError( 'repeat count must not overflow maximum string size' ) ;
+	}
+	var rpt = '' ;
+	for ( ;; ) {
+		if ( ( count & 1 ) === 1 ) {
+			rpt += str ;
+		}
+		count >>>= 1 ;
+		if ( count === 0 ) {
+			break ;
+		}
+		str += str ;
+	}
+	return rpt ;
 } ;
 
 
@@ -9308,21 +9168,21 @@ polyfill.repeat = function(count)
 },{}],30:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9344,21 +9204,19 @@ exports.regexp = {} ;
 
 
 
-exports.regexp.array2alternatives = function array2alternatives( array )
-{
+exports.regexp.array2alternatives = function array2alternatives( array ) {
 	var i , sorted = array.slice() ;
-	
+
 	// Sort descending by string length
-	sorted.sort( function( a , b ) {
+	sorted.sort( ( a , b ) => {
 		return b.length - a.length ;
 	} ) ;
-	
+
 	// Then escape what should be
-	for ( i = 0 ; i < sorted.length ; i ++ )
-	{
+	for ( i = 0 ; i < sorted.length ; i ++ ) {
 		sorted[ i ] = escape.regExpPattern( sorted[ i ] ) ;
 	}
-	
+
 	return sorted.join( '|' ) ;
 } ;
 
@@ -9367,21 +9225,21 @@ exports.regexp.array2alternatives = function array2alternatives( array )
 },{"./escape.js":23}],31:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9401,20 +9259,19 @@ module.exports = stringKit ;
 
 
 // Tier 0: add polyfills to stringKit
-var fn ;
+var fn_ ;
 var polyfill = require( './polyfill.js' ) ;
 
-for ( fn in polyfill )
-{
-	stringKit[ fn ] = function( str ) { // jshint ignore:line
-		return polyfill[ fn ].apply( str , Array.prototype.slice.call( arguments , 1 ) ) ;
-	} ; // jshint ignore:line
+for ( fn_ in polyfill ) {
+	stringKit[ fn_ ] = function( str , ... args ) {
+		return polyfill[ fn_ ].call( str , ... args ) ;
+	} ;
 }
 
 
 
 Object.assign( stringKit ,
-	
+
 	// Tier 1
 	{ escape: require( './escape.js' ) } ,
 	{ ansi: require( './ansi.js' ) } ,
@@ -9424,10 +9281,10 @@ Object.assign( stringKit ,
 
 
 Object.assign( stringKit ,
-	
+
 	// Tier 2
 	require( './format.js' ) ,
-	
+
 	// Tier 3
 	require( './misc.js' ) ,
 	require( './inspect.js' ) ,
@@ -9444,14 +9301,11 @@ Object.assign( stringKit ,
 
 
 // Install all polyfill into String.prototype
-stringKit.installPolyfills = function installPolyfills()
-{
+stringKit.installPolyfills = function installPolyfills() {
 	var fn ;
-	
-	for ( fn in polyfill )
-	{
-		if ( ! String.prototype[ fn ] )
-		{
+
+	for ( fn in polyfill ) {
+		if ( ! String.prototype[ fn ] ) {
 			String.prototype[ fn ] = polyfill[ fn ] ;
 		}
 	}
@@ -9462,21 +9316,21 @@ stringKit.installPolyfills = function installPolyfills()
 },{"./ansi.js":21,"./camel.js":22,"./escape.js":23,"./format.js":24,"./inspect.js":25,"./latinize.js":27,"./misc.js":28,"./polyfill.js":29,"./regexp.js":30,"./toTitleCase.js":32,"./unicode.js":33,"./wordwrap.js":34,"xregexp":45}],32:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9490,29 +9344,24 @@ stringKit.installPolyfills = function installPolyfills()
 
 
 
-module.exports = function toTitleCase( str , options )
-{
+module.exports = function toTitleCase( str , options ) {
 	if ( ! str || typeof str !== 'string' ) { return '' ; }
-	
+
 	options = options || {} ;
-	
-	return str.replace( /[^\s_-]+/g , function( part ) {
-		if ( options.zealous )
-		{
-			if ( options.preserveAllCaps && part === part.toUpperCase() )
-			{
+
+	return str.replace( /[^\s_-]+/g , ( part ) => {
+		if ( options.zealous ) {
+			if ( options.preserveAllCaps && part === part.toUpperCase() ) {
 				// This is a ALLCAPS word
 				return part ;
 			}
-			else
-			{
-				return part[ 0 ].toUpperCase() + part.slice( 1 ).toLowerCase() ;
-			}
+
+			return part[ 0 ].toUpperCase() + part.slice( 1 ).toLowerCase() ;
+
 		}
-		else
-		{
-			return part[ 0 ].toUpperCase() + part.slice( 1 ) ;
-		}
+
+		return part[ 0 ].toUpperCase() + part.slice( 1 ) ;
+
 	} ) ;
 } ;
 
@@ -9521,21 +9370,21 @@ module.exports = function toTitleCase( str , options )
 },{}],33:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9552,7 +9401,7 @@ module.exports = function toTitleCase( str , options )
 /*
 	Javascript does not use UTF-8 but UCS-2.
 	The purpose of this module is to process correctly strings containing UTF-8 characters that take more than 2 bytes.
-	
+
 	Since the punycode module is deprecated in Node.js v8.x, this is an adaptation of punycode.ucs2.x
 	as found on Aug 16th 2017 at: https://github.com/bestiejs/punycode.js/blob/master/punycode.js.
 */
@@ -9565,46 +9414,39 @@ module.exports = unicode ;
 
 
 
-unicode.encode = function encode( array )
-{
+unicode.encode = function encode( array ) {
 	return String.fromCodePoint( ... array ) ;
 } ;
 
 
 
 // Decode a string into an array of unicode codepoints
-unicode.decode = function decode( str )
-{
+unicode.decode = function decode( str ) {
 	var value , extra , counter = 0 , output = [] ,
 		length = str.length ;
-	
-	while ( counter < length )
-	{
+
+	while ( counter < length ) {
 		value = str.charCodeAt( counter ++ ) ;
-		
-		if ( value >= 0xD800 && value <= 0xDBFF && counter < length )
-		{
+
+		if ( value >= 0xD800 && value <= 0xDBFF && counter < length ) {
 			// It's a high surrogate, and there is a next character.
 			extra = str.charCodeAt( counter ++ ) ;
-			
-			if ( ( extra & 0xFC00 ) === 0xDC00 )	// Low surrogate.
-			{
+
+			if ( ( extra & 0xFC00 ) === 0xDC00 ) {	// Low surrogate.
 				output.push( ( ( value & 0x3FF ) << 10 ) + ( extra & 0x3FF ) + 0x10000 ) ;
 			}
-			else
-			{
+			else {
 				// It's an unmatched surrogate; only append this code unit, in case the
 				// next code unit is the high surrogate of a surrogate pair.
 				output.push( value ) ;
 				counter -- ;
 			}
 		}
-		else
-		{
+		else {
 			output.push( value ) ;
 		}
 	}
-	
+
 	return output ;
 } ;
 
@@ -9612,38 +9454,32 @@ unicode.decode = function decode( str )
 
 // Decode a string into an array of unicode characters
 // Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
-unicode.toArray = function toArray( str )
-{
+unicode.toArray = function toArray( str ) {
 	var value , extra , counter = 0 , output = [] ,
 		length = str.length ;
-	
-	while ( counter < length )
-	{
+
+	while ( counter < length ) {
 		value = str.charCodeAt( counter ++ ) ;
-		
-		if ( value >= 0xD800 && value <= 0xDBFF && counter < length )
-		{
+
+		if ( value >= 0xD800 && value <= 0xDBFF && counter < length ) {
 			// It's a high surrogate, and there is a next character.
 			extra = str.charCodeAt( counter ++ ) ;
-			
-			if ( ( extra & 0xFC00 ) === 0xDC00 )	// Low surrogate.
-			{
+
+			if ( ( extra & 0xFC00 ) === 0xDC00 ) {	// Low surrogate.
 				output.push( str.slice( counter - 2 , counter ) ) ;
 			}
-			else
-			{
+			else {
 				// It's an unmatched surrogate; only append this code unit, in case the
 				// next code unit is the high surrogate of a surrogate pair.
 				output.push( str[ counter - 2 ] ) ;
 				counter -- ;
 			}
 		}
-		else
-		{
+		else {
 			output.push( str[ counter - 1 ] ) ;
 		}
 	}
-	
+
 	return output ;
 } ;
 
@@ -9651,43 +9487,38 @@ unicode.toArray = function toArray( str )
 
 // Get the length of an unicode string
 // Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
-unicode.length = function length( str )
-{
+unicode.length = function length_( str ) {
 	var value , extra , counter = 0 , uLength = 0 ,
 		length = str.length ;
-	
-	while ( counter < length )
-	{
+
+	while ( counter < length ) {
 		value = str.charCodeAt( counter ++ ) ;
-		
-		if ( value >= 0xD800 && value <= 0xDBFF && counter < length )
-		{
+
+		if ( value >= 0xD800 && value <= 0xDBFF && counter < length ) {
 			// It's a high surrogate, and there is a next character.
 			extra = str.charCodeAt( counter ++ ) ;
-			
-			if ( ( extra & 0xFC00 ) !== 0xDC00 )
-			{
+
+			if ( ( extra & 0xFC00 ) !== 0xDC00 ) {
 				// It's an unmatched surrogate; only append this code unit, in case the
 				// next code unit is the high surrogate of a surrogate pair.
 				counter -- ;
 			}
 		}
-		
+
 		uLength ++ ;
 	}
-	
+
 	return uLength ;
 } ;
 
 
 
 // Return the width of a string in a terminal / monospace font
-unicode.width = function width( str )
-{
+unicode.width = function width( str ) {
 	var count = 0 ;
-	
+
 	unicode.decode( str ).forEach( code => count += unicode.isFullWidthCodePoint( code ) ? 2 : 1 ) ;
-	
+
 	return count ;
 } ;
 
@@ -9698,16 +9529,15 @@ unicode.width = function width( str )
 		0: single char
 		1: leading surrogate
 		-1: trailing surrogate
-	
+
 	Note: it does not check input, to gain perfs.
 */
-unicode.surrogatePair = function surrogatePair( char )
-{
+unicode.surrogatePair = function surrogatePair( char ) {
 	var code = char.charCodeAt( 0 ) ;
-	
+
 	if ( code < 0xd800 || code >= 0xe000 ) { return 0 ; }
 	else if ( code < 0xdc00 ) { return 1 ; }
-	else { return -1 ; }
+	return -1 ;
 } ;
 
 
@@ -9715,24 +9545,22 @@ unicode.surrogatePair = function surrogatePair( char )
 /*
 	Check if a character is a full-width char or not.
 */
-unicode.isFullWidth = function isFullWidth( char )
-{
+unicode.isFullWidth = function isFullWidth( char ) {
 	return unicode.isFullWidthCodePoint( char.codePointAt( 0 ) ) ;
 } ;
 
 
-	
+
 /*
 	Check if a codepoint represent a full-width char or not.
-	
+
 	Borrowed from Node.js source, from readline.js.
 */
-unicode.isFullWidthCodePoint = function isFullWidthCodePoint( code )
-{
+unicode.isFullWidthCodePoint = function isFullWidthCodePoint( code ) {
 	// Code points are derived from:
 	// http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
 	if ( code >= 0x1100 && (
-			code <= 0x115f ||	// Hangul Jamo
+		code <= 0x115f ||	// Hangul Jamo
 			0x2329 === code || // LEFT-POINTING ANGLE BRACKET
 			0x232a === code || // RIGHT-POINTING ANGLE BRACKET
 			// CJK Radicals Supplement .. Enclosed CJK Letters and Months
@@ -9762,16 +9590,15 @@ unicode.isFullWidthCodePoint = function isFullWidthCodePoint( code )
 			0x20000 <= code && code <= 0x3fffd ) ) {
 		return true ;
 	}
-	
+
 	return false ;
 } ;
 
 
 
 // Convert normal ASCII chars to their full-width counterpart
-unicode.toFullWidth = function toFullWidth( str )
-{
-	return String.fromCodePoint( ... unicode.decode( str ).map( code => 
+unicode.toFullWidth = function toFullWidth( str ) {
+	return String.fromCodePoint( ... unicode.decode( str ).map( code =>
 		code >= 33 && code <= 126  ?  0xff00 + code - 0x20  :  code
 	) ) ;
 } ;
@@ -9781,21 +9608,21 @@ unicode.toFullWidth = function toFullWidth( str )
 },{}],34:[function(require,module,exports){
 /*
 	String Kit
-	
-	Copyright (c) 2014 - 2017 Cédric Ronvel
-	
+
+	Copyright (c) 2014 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
-	
+
 	Permission is hereby granted, free of charge, to any person obtaining a copy
 	of this software and associated documentation files (the "Software"), to deal
 	in the Software without restriction, including without limitation the rights
 	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 	copies of the Software, and to permit persons to whom the Software is
 	furnished to do so, subject to the following conditions:
-	
+
 	The above copyright notice and this permission notice shall be included in all
 	copies or substantial portions of the Software.
-	
+
 	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -9809,6 +9636,20 @@ unicode.toFullWidth = function toFullWidth( str )
 
 
 
+var unicode = require( './unicode.js' ) ;
+
+
+
+// French typography rules with '!', '?', ':' and ';'
+const FRENCH_DOUBLE_GRAPH_TYPO = {
+	'!': true ,
+	'?': true ,
+	':': true ,
+	';': true
+} ;
+
+
+
 /*
 	str: the string to process
 	width: the max width (default to 80)
@@ -9816,82 +9657,77 @@ unicode.toFullWidth = function toFullWidth( str )
 		by default: lines are joined with '\n',
 		if null: do not join, return an array of lines
 */
-module.exports = function wordwrap( str , width , join )
-{
-	var start = 0 , end , maxEnd , lastEnd , lastWasSpace ,
+module.exports = function wordwrap( str , width , join ) {
+	var start = 0 , end , currentWidth , lastEnd , lastWasSpace ,
+		strArray = unicode.toArray( str ) ,
 		trimNewLine = false ,
 		line , lines = [] ,
-		length = str.length ;
-	
+		length = strArray.length ;
+
 	// Catch NaN, zero or negative and non-number
 	if ( ! width || typeof width !== 'number' || width <= 0 ) { width = 80 ; }
-	
+
 	if ( join === undefined ) { join = '\n' ; }
-	
-	var getNextLine = function() {
-		
+
+	var getNextLine = () => {
+
 		// Find the first non-space char
-		while( str[ start ] === ' ' ) { start ++ ; }
-		
-		if ( trimNewLine && str[ start ] === '\n' )
-		{
+		while ( strArray[ start ] === ' ' ) { start ++ ; }
+
+		if ( trimNewLine && strArray[ start ] === '\n' ) {
 			start ++ ;
-			while( str[ start ] === ' ' ) { start ++ ; }
+			while ( strArray[ start ] === ' ' ) { start ++ ; }
 		}
-		
+
 		if ( start >= length ) { return null ; }
-		
+
 		trimNewLine = false ;
 		lastWasSpace = false ;
 		end = lastEnd = start ;
-		maxEnd = start + width ;
-		
-		while( true )
-		{
-			if ( end >= length )
-			{
-				return str.slice( start , end ).trim() ;
+		currentWidth = 0 ;
+
+		for ( ;; ) {
+			if ( end >= length ) {
+				return strArray.slice( start , end ).join( '' ).trim() ;
 			}
-			else if ( end >= maxEnd )
-			{
+
+			currentWidth += unicode.isFullWidth( strArray[ end ] ) ? 2 : 1 ;
+
+			if ( currentWidth > width ) {
 				// If lastEnd === start, this is a word that takes the whole line: cut it
 				// If not, use the lastEnd
 				trimNewLine = true ;
 				if ( lastEnd !== start ) { end = lastEnd ; }
-				return str.slice( start , end ).trim() ;
+				return strArray.slice( start , end ).join( '' ).trim() ;
 			}
-			else if ( str[ end ] === '\n' )
-			{
-				return str.slice( start , end ++ ).trim() ;
+			else if ( strArray[ end ] === '\n' ) {
+				return strArray.slice( start , end ++ ).join( '' ).trim() ;
 			}
-			else if ( str[ end ] === ' ' && ! lastWasSpace )
-			{
+			else if ( strArray[ end ] === ' ' && ! lastWasSpace && ! FRENCH_DOUBLE_GRAPH_TYPO[ strArray[ end + 1 ] ] ) {
 				// This is the first space of a group of space
 				lastEnd = end ;
 			}
-			else
-			{
+			else {
 				lastWasSpace = false ;
 			}
-			
+
 			end ++ ;
 		}
 	} ;
-	
-	while ( start < length && ( line = getNextLine() ) !== null )
-	{
+
+	while ( start < length && ( line = getNextLine() ) !== null ) {
 		lines.push( line ) ;
 		start = end ;
 	}
-	
+
 	if ( typeof join === 'string' ) { lines = lines.join( join ) ; }
-	
+
 	return lines ;
 } ;
 
 
 
-},{}],35:[function(require,module,exports){
+},{"./unicode.js":33}],35:[function(require,module,exports){
 /*
 	Tree Kit
 	
