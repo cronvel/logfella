@@ -28,7 +28,6 @@
 
 var Logfella = require( '../lib/Logfella.js' ) ;
 var log = Logfella.global ;
-var async = require( 'async-kit' ) ;
 
 var fs = require( 'fs' ) ;
 
@@ -70,6 +69,5 @@ log.monTransports[ 0 ].server.on( 'connection' , function( socket ) {
 process.on( 'exit' , function() {
 	fs.unlinkSync( './mon.sock' ) ;
 } ) ;
-
 
 

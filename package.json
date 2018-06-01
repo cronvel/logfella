@@ -10,15 +10,14 @@
     "test": "test"
   },
   "dependencies": {
-    "async-kit": "^2.2.4",
     "kung-fig": "^0.45.3",
     "logfella-common-transport": "^0.3.4",
+    "seventh": "^0.7.8",
     "string-kit": "^0.7.4",
     "tree-kit": "^0.5.27"
   },
   "devDependencies": {
     "browserify": "^16.2.2",
-    "expect.js": "^0.3.1",
     "uglify-js-es6": "^2.8.9"
   },
   "scripts": {
