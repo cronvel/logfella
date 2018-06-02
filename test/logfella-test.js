@@ -1,8 +1,8 @@
 /*
-	The Cedric's Swiss Knife (CSK) - CSK logger toolbox
+	Logfella
 
-	Copyright (c) 2015 Cédric Ronvel 
-	
+	Copyright (c) 2015 - 2018 Cédric Ronvel
+
 	The MIT License (MIT)
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -35,8 +35,7 @@ if ( process.browser ) { return ; }
 
 
 var Logfella = require( '../lib/Logfella.js' ) ;
-var async = require( 'async-kit' ) ;
-var expect = require( 'expect.js' ) ;
+var Promise = require( 'seventh' ) ;
 
 
 
@@ -101,10 +100,10 @@ describe( "Logfella" , function() {
 		logger.info( 'my-domain' , 'Blah: %s' , 'formated' ) ;
 	} ) ;
 	
-	it( "misc tests" , function( done ) {
+	it( "misc tests" , () => {
 		
 		var logger = Logfella.create() ;
-		var mochaLogger = logger.use( 'mocha' ) ;
+		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,
@@ -120,24 +119,23 @@ describe( "Logfella" , function() {
 		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
 		logger.log( 5 , null , 'using integer' ) ;
 		
-		mochaLogger.log( 'warning' , 'This is the mocha logger' ) ;
-		mochaLogger.info( 'This is the mocha logger x2' ) ;
+		teaTimeLogger.log( 'warning' , 'This is the Tea Time logger' ) ;
+		teaTimeLogger.info( 'This is the Tea Time logger x2' ) ;
 		logger.debug( null , 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
-		mochaLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
+		teaTimeLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
 		
-		async.do( [
-			[ logger.trace.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.debug.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.verbose.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.info.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.warning.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.error.bind( logger ) , 'my-domain' , 'Blah: %s' , 'formated' ] ,
-			[ logger.fatal.bind( logger ) , 'my-domain' , 'Blah' ]
-		] )
-		.exec( done ) ;
+		return Promise.all( [
+			logger.trace( 'my-domain' , 'Blah' ) ,
+			logger.debug( 'my-domain' , 'Blah' ) ,
+			logger.verbose( 'my-domain' , 'Blah' ) ,
+			logger.info( 'my-domain' , 'Blah' ) ,
+			logger.warning( 'my-domain' , 'Blah' ) ,
+			logger.error( 'my-domain' , 'Blah: %s' , 'formated' ) ,
+			logger.fatal( 'my-domain' , 'Blah' )
+		] ) ;
 	} ) ;
 	
-	it( "full setup" , function( done ) {
+	it( "full setup" , () => {
 		
 		var logger = Logfella.create( {
 			minLevel: 'trace' ,
@@ -147,30 +145,29 @@ describe( "Logfella" , function() {
 			]
 		} ) ;
 		
-		var mochaLogger = logger.use( 'mocha' ) ;
+		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.info( null , 'call me later' ) ;
 		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
 		logger.log( 5 , null , 'using integer' ) ;
 		
-		mochaLogger.log( 'warning' , 'This is the mocha logger' ) ;
-		mochaLogger.info( 'This is the mocha logger x2' ) ;
+		teaTimeLogger.log( 'warning' , 'This is the Tea Time logger' ) ;
+		teaTimeLogger.info( 'This is the Tea Time logger x2' ) ;
 		logger.debug( null , 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
-		mochaLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
+		teaTimeLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
 		
-		async.do( [
-			[ logger.trace.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.debug.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.verbose.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.info.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.warning.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.error.bind( logger ) , 'my-domain' , 'Blah: %s' , 'formated' ] ,
-			[ logger.fatal.bind( logger ) , 'my-domain' , 'Blah' ]
-		] )
-		.exec( done ) ;
+		return Promise.all( [
+			logger.trace( 'my-domain' , 'Blah' ) ,
+			logger.debug( 'my-domain' , 'Blah' ) ,
+			logger.verbose( 'my-domain' , 'Blah' ) ,
+			logger.info( 'my-domain' , 'Blah' ) ,
+			logger.warning( 'my-domain' , 'Blah' ) ,
+			logger.error( 'my-domain' , 'Blah: %s' , 'formated' ) ,
+			logger.fatal( 'my-domain' , 'Blah' )
+		] ) ;
 	} ) ;
 	
-	it( "full setup on global" , function( done ) {
+	it( "full setup on global" , () => {
 		
 		var logger = Logfella.global ;
 		
@@ -182,33 +179,32 @@ describe( "Logfella" , function() {
 			]
 		} ) ;
 		
-		var mochaLogger = logger.use( 'mocha' ) ;
+		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.info( null , 'call me later' ) ;
 		logger.info( null , 'some (%i) formated %s' , 1 , 'output' ) ;
 		logger.log( 5 , null , 'using integer' ) ;
 		
-		mochaLogger.log( 'warning' , 'This is the mocha logger' ) ;
-		mochaLogger.info( 'This is the mocha logger x2' ) ;
+		teaTimeLogger.log( 'warning' , 'This is the Tea Time logger' ) ;
+		teaTimeLogger.info( 'This is the Tea Time logger x2' ) ;
 		logger.debug( null , 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
-		mochaLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
+		teaTimeLogger.debug( 'Inspector: %I' , { some: 'value' , another: 'string' } ) ;
 		
-		async.do( [
-			[ logger.trace.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.debug.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.verbose.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.info.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.warning.bind( logger ) , 'my-domain' , 'Blah' ] ,
-			[ logger.error.bind( logger ) , 'my-domain' , 'Blah: %s' , 'formated' ] ,
-			[ logger.fatal.bind( logger ) , 'my-domain' , 'Blah' ]
-		] )
-		.exec( done ) ;
+		return Promise.all( [
+			logger.trace( 'my-domain' , 'Blah' ) ,
+			logger.debug( 'my-domain' , 'Blah' ) ,
+			logger.verbose( 'my-domain' , 'Blah' ) ,
+			logger.info( 'my-domain' , 'Blah' ) ,
+			logger.warning( 'my-domain' , 'Blah' ) ,
+			logger.error( 'my-domain' , 'Blah: %s' , 'formated' ) ,
+			logger.fatal( 'my-domain' , 'Blah' )
+		] ) ;
 	} ) ;
 	
 	it( "errors" , function() {
 		
 		var logger = Logfella.create() ;
-		var mochaLogger = logger.use( 'mocha' ) ;
+		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,
@@ -222,7 +218,7 @@ describe( "Logfella" , function() {
 	it( "variable inspection" , function() {
 		
 		var logger = Logfella.create() ;
-		var mochaLogger = logger.use( 'mocha' ) ;
+		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.setGlobalConfig( {
 			minLevel: 'trace' ,
@@ -266,12 +262,10 @@ describe( "Logfella" , function() {
 		logger.fatal( null , 'some fatal error %E' , new Error( 'Something really bad happens' ) ) ;
 		logger.info( null , { mon: { "+bob": 5 } } , 'This update monitoring' ) ;
 		
-		expect( logger.mon ).to.eql( { warnings: 1 , errors: 2 , bob: 128 } ) ;
+		expect( logger.mon ).to.equal( { warnings: 1 , errors: 2 , bob: 128 } ) ;
 		logger.info( null , 'Monitoring: %I' , logger.mon ) ;
 		
 		logger.monFrame() ;
 	} ) ;
 } ) ;
-
-
 

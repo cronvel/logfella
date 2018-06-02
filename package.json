@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "0.3.59",
+  "version": "1.0.0",
   "engines": {
     "node": ">=6.0.0"
   },
@@ -10,8 +10,8 @@
     "test": "test"
   },
   "dependencies": {
-    "kung-fig": "^0.45.3",
-    "logfella-common-transport": "^0.3.4",
+    "kung-fig-tree-ops": "^0.45.4",
+    "logfella-common-transport": "^1.0.0",
     "seventh": "^0.7.8",
     "string-kit": "^0.7.4",
     "tree-kit": "^0.5.27"
@@ -21,7 +21,7 @@
     "uglify-js-es6": "^2.8.9"
   },
   "scripts": {
-    "test": "mocha -R dot"
+    "test": "tea-time -R dot"
   },
   "repository": {
     "type": "git",
@@ -34,5 +34,13 @@
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/cronvel/logfella/issues"
+  },
+  "copyright": {
+    "title": "Logfella",
+    "years": [
+      2015,
+      2018
+    ],
+    "owner": "Cédric Ronvel"
   }
 }
