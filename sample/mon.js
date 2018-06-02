@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
 	Logfella
 
@@ -24,7 +25,7 @@
 	SOFTWARE.
 */
 
-
+"use strict" ;
 
 var Logfella = require( '../lib/Logfella.js' ) ;
 var log = Logfella.global ;
@@ -45,15 +46,15 @@ log.installExitHandlers() ;
 
 log.removeAllTransports() ;
 log.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
-log.addTransport( 'netServer' , { role: 'log' , minLevel: 'trace' , listen: 1235 } ) ;
-log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , listen: 1234 } ) ;
-log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , listen: './mon.sock' } ) ;
+log.addTransport( 'netServer' , { role: 'log' , minLevel: 'trace' , port: 1235 } ) ;
+log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , port: 1234 } ) ;
+log.addTransport( 'netServer' , { role: 'mon' , minLevel: 'trace' , port: './mon.sock' } ) ;
 
 log = log.use( 'tests' ) ;
 
 
 
-log.monTransports[ 0 ].server.on( 'connection' , function( socket ) {
+log.monTransports[ 0 ].server.on( 'connection' , socket => {
 	
 	var id = ++ count ;
 	
@@ -64,7 +65,8 @@ log.monTransports[ 0 ].server.on( 'connection' , function( socket ) {
 	} ) ;
 } ) ;
 
-
+var i = 0 ;
+setInterval( () => log.info( { mon: { i: i } } , "info %i" , i ++ ) , 1000 ) ;
 
 process.on( 'exit' , function() {
 	fs.unlinkSync( './mon.sock' ) ;

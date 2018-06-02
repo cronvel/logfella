@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
 	Logfella
 
@@ -23,8 +24,11 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 	SOFTWARE.
 */
+
+"use strict" ;
+
 var logger = require( '../lib/Logfella.js' ).global.use( 'main' ) ;
-var async = require( 'async-kit' ) ;
+var Promise = require( 'seventh' ) ;
 
 
 
@@ -42,7 +46,7 @@ logger.installExitHandlers() ;
 process.on( 'uncaughtException' , function( error ) {
 	logger.info( 'do something about that exception...' ) ;
 	//throw error ;
-	async.exit( 2 ) ;
+	Promise.asyncExit( 2 ) ;
 } ) ;
 //*/
 
