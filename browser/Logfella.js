@@ -126,6 +126,7 @@ function Logfella( config ) {
 	this.levelHash = defaultLevelHash ;
 	this.mon = { warnings: 0 , errors: 0 } ;
 	this.monPeriod = null ;
+	this.monStatus = 'stopped' ;
 
 	// Should be not enumerable (circular)
 	Object.defineProperty( this , 'root' , { value: this } ) ;
@@ -147,10 +148,6 @@ Logfella.create = ( ... args ) => new Logfella( ... args ) ;
 
 Logfella.prototype.timeFormatter = require( './timeFormatter.js' ) ;
 Logfella.prototype.messageFormatter = require( './messageFormatter.js' ) ;
-
-
-
-function noop() {}
 
 
 
@@ -256,32 +253,6 @@ Logfella.prototype.configure = function configure( config ) {
 			this.addTransport( config.transports[ i ].type , config.transports[ i ] ) ;
 		}
 	}
-} ;
-
-
-
-Logfella.prototype.startMon = function startMon() {
-	if ( this.monTimer ) { return ; }
-
-	this.monTimer = setTimeout( () => {
-		this.monTimer = null ;
-		this.monFrame( () => { this.startMon() ; } ) ;
-	} , this.monPeriod ) ;
-} ;
-
-
-
-Logfella.prototype.stopMon = function stopMon() {
-	if ( this.monTimer ) {
-		clearTimeout( this.monTimer ) ;
-		this.monTimer = null ;
-	}
-} ;
-
-
-
-Logfella.prototype.updateMon = function updateMon( monModifier ) {
-	treeOps.autoReduce( this.mon , monModifier ) ;
 } ;
 
 
@@ -435,12 +406,65 @@ Logfella.prototype.log = function log( level , ... args ) {
 
 
 
-// monFrame( [callback] )
-Logfella.prototype.monFrame = function monFrame( callback ) {
-	if ( ! callback ) { callback = noop ; }
+Logfella.prototype.startMon = async function startMon() {
+	switch ( this.monStatus ) {
+		case 'stopping' :
+			// We have to wait until it is stopped
+			await Promise.resolveTimeout( this.monPeriod ) ;
+			return this.startMon() ;
+		case 'stopped' :
+			// Go!
+			break ;
+		case 'started' :
+			// Already running
+			return ;
+	}
 
-	// If there is no transport, skip now...
-	if ( ! this.monTransports.length ) { callback() ; return ; }
+	if ( this.monStatus !== 'stopped' ) { return ; }
+	this.monStatus = 'started' ;
+
+	for ( ;; ) {
+		await this.monFrame() ;
+		await Promise.resolveTimeout( this.monPeriod ) ;
+
+		switch ( this.monStatus ) {
+			case 'stopping' :
+				// We can now turn it into 'stopped'
+				this.monStatus = 'stopped' ;
+				return ;
+			case 'stopped' :
+				// Already stopped, return... (should never happen)
+				return ;
+			case 'started' :
+				// Still running!
+				break ;
+		}
+	}
+} ;
+
+
+
+Logfella.prototype.stopMon = function stopMon() {
+	switch ( this.monStatus ) {
+		case 'stopping' :
+		case 'stopped' :
+			return ;
+		case 'started' :
+			this.monStatus = 'stopping' ;
+	}
+} ;
+
+
+
+Logfella.prototype.updateMon = function updateMon( monModifier ) {
+	treeOps.autoReduce( this.mon , monModifier ) ;
+} ;
+
+
+
+// monFrame()
+Logfella.prototype.monFrame = function monFrame() {
+	if ( ! this.monTransports.length ) { return Promise.dummy ; }
 
 	var cache = {} ;
 
@@ -456,17 +480,12 @@ Logfella.prototype.monFrame = function monFrame( callback ) {
 		mon: this.mon
 	} ;
 
-	var eachTransport = transport => {
-		//if ( ! transport.monitoring ) { usingCallback() ; return ; }
-		return transport.transport( data , cache ) ;
-	} ;
-
 	// Fast and common use-case: only one transport (avoid all Promise.all() machinery)
-	if ( this.logTransports.length === 1 ) {
-		return eachTransport( this.logTransports[ 0 ] ) ;
+	if ( this.monTransports.length === 1 ) {
+		return this.monTransports[ 0 ].transport( data , cache ) ;
 	}
 
-	return Promise.all( this.monTransports.map( eachTransport ) ) ;
+	return Promise.all( this.monTransports.map( transport => transport.transport( data , cache ) ) ) ;
 } ;
 
 
