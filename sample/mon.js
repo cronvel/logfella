@@ -67,6 +67,8 @@ log.monTransports[ 0 ].server.on( 'connection' , socket => {
 
 var i = 0 ;
 setInterval( () => log.info( { mon: { i: i } } , "info %i" , i ++ ) , 1000 ) ;
+setInterval( () => log.error( "Ouch! An error occured!" ) , Math.random() * 16000 ) ;
+setInterval( () => log.warning( "Something is strange!" ) , Math.random() * 8000 ) ;
 
 process.on( 'exit' , function() {
 	fs.unlinkSync( './mon.sock' ) ;
