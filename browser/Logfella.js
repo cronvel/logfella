@@ -355,7 +355,7 @@ Logfella.prototype.log = function log( level , ... args ) {
 		}
 		else {
 			data.messageData = args.slice( formatedMessageIndex , formatedMessageIndex + 1 + formatCount ) ;
-			data.messageData.isFormat = true ;
+			data.isFormat = true ;
 		}
 	}
 	else {
@@ -809,7 +809,7 @@ function message( data , color ) {
 			for ( k in data.mon ) { messageString += k + ': ' + data.mon[ k ] + '\n' ; }
 		}
 	}
-	else if ( Array.isArray( data.messageData ) && data.messageData.isFormat ) {
+	else if ( Array.isArray( data.messageData ) && data.isFormat ) {
 		//if ( color ) { messageString = string.ansi.italic + string.formatMethod.apply( { color: true } , data.messageData ) ; }
 		//else { messageString = string.formatMethod.apply( { color: false } , data.messageData ) ; }
 
@@ -1011,6 +1011,7 @@ exports.json = function json( data , cache ) {
 		mon: data.mon || undefined ,
 		meta: data.meta || undefined ,
 		messageData: data.mon ? undefined : data.messageData ,
+		isFormat: data.isFormat ,
 		message: data.mon ? undefined : message( data , this.color )
 	} ) ;
 
