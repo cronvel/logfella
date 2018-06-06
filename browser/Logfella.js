@@ -259,7 +259,7 @@ Logfella.prototype.configure = function configure( config ) {
 
 // log( level , domain , [code|meta] , formatedMessage , [arg1] , [arg2] , ... )
 Logfella.prototype.log = function log( level , ... args ) {
-	var formatCount , formatedMessage , formatedMessageIndex , data , type , o , monModifier , cache = {} ;
+	var formatCount , formatedMessage , formatedMessageIndex , data , type , o , monModifier , cache = null ;
 
 	// Level management should come first for early exit
 	if ( typeof level === 'number' ) {
@@ -401,6 +401,9 @@ Logfella.prototype.log = function log( level , ... args ) {
 		return eachTransport( this.logTransports[ 0 ] ) ;
 	}
 
+	// Only active cache if there are more than one tranport
+	cache = {} ;
+
 	return Promise.all( this.logTransports.map( eachTransport ) ) ;
 } ;
 
@@ -466,7 +469,7 @@ Logfella.prototype.updateMon = function updateMon( monModifier ) {
 Logfella.prototype.monFrame = function monFrame() {
 	if ( ! this.monTransports.length ) { return Promise.dummy ; }
 
-	var cache = {} ;
+	var cache = null ;
 
 	var data = {
 		level: null ,
@@ -484,6 +487,9 @@ Logfella.prototype.monFrame = function monFrame() {
 	if ( this.monTransports.length === 1 ) {
 		return this.monTransports[ 0 ].transport( data , cache ) ;
 	}
+
+	// Only active cache if there are more than one tranport
+	cache = {} ;
 
 	return Promise.all( this.monTransports.map( transport => transport.transport( data , cache ) ) ) ;
 } ;
@@ -833,20 +839,22 @@ exports.text = function text( data , cache ) {
 		codeString = '' , metaString = '' , messageString = '' , stackString = '' ,
 		separatorString = '' ;
 
-	cacheKey = 'text-' +
-		( this.color ? 'c-' : '!c-' ) +
-		( this.indent ? 'i-' : '!i-' ) +
-		( this.includeIdMeta ? 'im-' : '!im-' ) +
-		( this.includeCommonMeta ? 'cm-' : '!cm-' ) +
-		( this.includeUserMeta ? 'um-' : '!um-' ) +
-		this.timeFormatter.name ;
+	if ( cache ) {
+		cacheKey = 'text-' +
+			( this.color ? 'c-' : '!c-' ) +
+			( this.indent ? 'i-' : '!i-' ) +
+			( this.includeIdMeta ? 'im-' : '!im-' ) +
+			( this.includeCommonMeta ? 'cm-' : '!cm-' ) +
+			( this.includeUserMeta ? 'um-' : '!um-' ) +
+			this.timeFormatter.name ;
 
-	//console.log( "<<< Cache key:" , cacheKey ) ;
+		//console.log( "<<< Cache key:" , cacheKey ) ;
 
-	// Cache hit!
-	if ( cache[ cacheKey ] ) {
-		//console.log( ">>> Cache hit!" ) ;
-		return cache[ cacheKey ] ;
+		// Cache hit!
+		if ( cache[ cacheKey ] ) {
+			//console.log( ">>> Cache hit!" ) ;
+			return cache[ cacheKey ] ;
+		}
 	}
 
 	// Build the message
@@ -968,8 +976,7 @@ exports.text = function text( data , cache ) {
 	// Construct the whole message string...
 	messageString = levelString + timeString + idString + domainString + codeString + metaString + separatorString + messageString + stackString ;
 
-	// Cache it!
-	cache[ cacheKey ] = messageString ;
+	if ( cache ) { cache[ cacheKey ] = messageString ; }
 
 	return messageString ;
 } ;
@@ -980,15 +987,15 @@ exports.text = function text( data , cache ) {
 exports.json = function json( data , cache ) {
 	var cacheKey , str ;
 
-	cacheKey = 'json-' +
-		( this.color ? 'c-' : '!c-' ) ;
+	if ( cache ) {
+		cacheKey = 'json-' + ( this.color ? 'c-' : '!c-' ) ;
+		//console.log( "<<< Cache key:" , cacheKey ) ;
 
-	//console.log( "<<< Cache key:" , cacheKey ) ;
-
-	// Cache hit!
-	if ( cache[ cacheKey ] ) {
-		//console.log( ">>> Cache hit!" ) ;
-		return cache[ cacheKey ] ;
+		// Cache hit!
+		if ( cache[ cacheKey ] ) {
+			//console.log( ">>> Cache hit!" ) ;
+			return cache[ cacheKey ] ;
+		}
 	}
 
 	str = JSON.stringify( {
@@ -1007,7 +1014,8 @@ exports.json = function json( data , cache ) {
 		message: data.mon ? undefined : message( data , this.color )
 	} ) ;
 
-	cache[ cacheKey ] = str ;
+	if ( cache ) { cache[ cacheKey ] = str ; }
+
 	return str ;
 } ;
 
