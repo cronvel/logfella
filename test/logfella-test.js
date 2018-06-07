@@ -51,7 +51,7 @@ describe( "Logfella" , function() {
 		
 		var logger = Logfella.create() ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
@@ -69,7 +69,7 @@ describe( "Logfella" , function() {
 		
 		var logger = Logfella.create() ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
@@ -86,7 +86,7 @@ describe( "Logfella" , function() {
 		
 		var logger = Logfella.create() ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
@@ -105,7 +105,7 @@ describe( "Logfella" , function() {
 		var logger = Logfella.create() ;
 		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
@@ -171,7 +171,7 @@ describe( "Logfella" , function() {
 		
 		var logger = Logfella.global ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain' ,
 			transports: [
@@ -206,7 +206,7 @@ describe( "Logfella" , function() {
 		var logger = Logfella.create() ;
 		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
@@ -220,7 +220,7 @@ describe( "Logfella" , function() {
 		var logger = Logfella.create() ;
 		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
@@ -233,7 +233,7 @@ describe( "Logfella" , function() {
 		
 		var logger = Logfella.create() ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
@@ -248,14 +248,14 @@ describe( "Logfella" , function() {
 		
 		var logger = Logfella.create() ;
 		
-		logger.setGlobalConfig( {
+		logger.configure( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain'
 		} ) ;
 		
 		logger.mon.bob = 123 ;
 		
-		logger.addTransport( 'console' , { minLevel: 'trace' , monitoring: true , output: process.stderr } ) ;
+		logger.addTransport( 'console' , { minLevel: 'trace' , role: 'mon' , output: process.stderr } ) ;
 		
 		logger.warning( null , 'warning!' ) ;
 		logger.error( null , 'some error %E' , new Error( 'Something bad happens' ) ) ;

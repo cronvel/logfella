@@ -36,7 +36,7 @@ var fs = require( 'fs' ) ;
 
 var count = 0 ;
 
-log.setGlobalConfig( {
+log.configure( {
 	minLevel: 'trace' ,
 	defaultDomain: 'default-domain' ,
 	monPeriod: 1000
