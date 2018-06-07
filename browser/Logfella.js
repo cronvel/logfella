@@ -6929,11 +6929,11 @@ exports.formatMethod = function format( ... args ) {
 
 			switch ( mode ) {
 				case 's' :	// string
-					if ( arg === null || arg === undefined ) { return '' ; }
+					if ( arg === null || arg === undefined ) { return '(' + arg + ')' ; }
 					if ( typeof arg === 'string' ) { return arg ; }
 					if ( typeof arg === 'number' ) { return '' + arg ; }
 					if ( typeof arg.toString === 'function' ) { return arg.toString() ; }
-					return '' ;
+					return '(' + arg + ')' ;
 				case 'f' :	// float
 					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg !== 'number' ) { return '0' ; }
@@ -6956,6 +6956,10 @@ exports.formatMethod = function format( ... args ) {
 					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.floor( arg ) ; }
 					return '0' ;
+				case 'k' :	// metric prefixes (like k,M,G, etc)
+					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+					if ( typeof arg !== 'number' ) { return '0' ; }
+					return metricPrefix( arg ) ;
 				case 'u' :	// unsigned decimal
 					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ) ; }
@@ -7259,6 +7263,45 @@ exports.format.hasFormatting = function hasFormatting( str ) {
 	return false ;
 } ;
 
+
+
+// Metric prefix
+var mulPrefix = [ '' , 'k' , 'M' , 'G' , 'T' , 'P' , 'E' , 'Z' , 'Y' ] ;
+var subMulPrefix = [ '' , 'm' , 'µ' , 'n' , 'p' , 'f' , 'a' , 'z' , 'y' ] ;
+var roundStep = [ 100 , 10 , 1 ] ;
+
+
+
+function metricPrefix( n ) {
+	var log , logDiv3 , logMod , base , prefix ;
+
+	if ( ! n || n === 1 ) { return '' + n ; }
+	if ( n < 0 ) { return '-' + metricPrefix( -n ) ; }
+
+	if ( n > 1 ) {
+		log = Math.floor( Math.log10( n ) ) ;
+		logDiv3 = Math.floor( log / 3 ) ;
+		logMod = log % 3 ;
+		base = round( n / ( 1000 ** logDiv3 ) , roundStep[ logMod ] ) ;
+		prefix = mulPrefix[ logDiv3 ] ;
+	}
+	else {
+		log = Math.floor( Math.log10( n ) ) ;
+		logDiv3 = Math.floor( log / 3 ) ;
+		logMod = log % 3 ;
+		if ( logMod < 0 ) { logMod += 3 ; }
+		base = round( n / ( 1000 ** logDiv3 ) , roundStep[ logMod ] ) ;
+		prefix = subMulPrefix[ -logDiv3 ] ;
+	}
+
+	return '' + base + prefix ;
+}
+
+
+
+function round( v , step ) {
+	return Math.round( ( v + Number.EPSILON ) * step ) / step ;
+}
 
 
 }).call(this,require("buffer").Buffer)
@@ -8388,11 +8431,24 @@ unicode.length = function length_( str ) {
 
 
 
-// Return the width of a string in a terminal / monospace font
+// Return the width of a string in a terminal/monospace font
 unicode.width = function width( str ) {
 	var count = 0 ;
-
 	unicode.decode( str ).forEach( code => count += unicode.isFullWidthCodePoint( code ) ? 2 : 1 ) ;
+	return count ;
+} ;
+
+
+
+// Return the width of an array of string in a terminal/monospace font
+unicode.arrayWidth = function arrayWidth( array , limit ) {
+	var index , count = 0 ;
+
+	if ( limit === undefined ) { limit = array.length ; }
+
+	for ( index = 0 ; index < limit ; index ++ ) {
+		count += unicode.isFullWidth( array[ index ] ) ? 2 : 1 ;
+	}
 
 	return count ;
 } ;
@@ -8421,7 +8477,8 @@ unicode.surrogatePair = function surrogatePair( char ) {
 	Check if a character is a full-width char or not.
 */
 unicode.isFullWidth = function isFullWidth( char ) {
-	return unicode.isFullWidthCodePoint( char.codePointAt( 0 ) ) ;
+	if ( char.length <= 1 ) { return unicode.isFullWidthCodePoint( char.codePointAt( 0 ) ) ; }
+	return unicode.isFullWidthCodePoint( unicode.decode( char )[ 0 ] ) ;
 } ;
 
 
