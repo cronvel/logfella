@@ -157,22 +157,6 @@ var defaultLevelHash = {} ,
 
 
 
-Logfella.defineOrConfig = function defineOrConfig( name , config ) {
-	if ( Logfella[ name ] ) {
-		if ( Logfella[ name ] instanceof Logfella ) {
-			Logfella[ name ].configure( config ) ;
-		}
-		else {
-			throw new Error( "Logfella: '" + name + "' is reserved" ) ;
-		}
-	}
-	else {
-		Logfella[ name ] = new Logfella( config ) ;
-	}
-} ;
-
-
-
 ( function() {
 	var i , name ;
 
@@ -192,6 +176,33 @@ Logfella.defineOrConfig = function defineOrConfig( name , config ) {
 		createShortHand( i , name ) ;
 	}
 } )() ;
+
+
+
+// Check if the current level is enable
+Logfella.prototype.checkLevel = function checkLevel( level ) {
+	if ( typeof level === 'string' ) {
+		level = this.levelHash[ level ] ;
+	}
+
+	return level >= this.minLevel && level <= this.maxLevel ;
+} ;
+
+
+
+Logfella.defineOrConfig = function defineOrConfig( name , config ) {
+	if ( Logfella[ name ] ) {
+		if ( Logfella[ name ] instanceof Logfella ) {
+			Logfella[ name ].configure( config ) ;
+		}
+		else {
+			throw new Error( "Logfella: '" + name + "' is reserved" ) ;
+		}
+	}
+	else {
+		Logfella[ name ] = new Logfella( config ) ;
+	}
+} ;
 
 
 
