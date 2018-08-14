@@ -1,4 +1,10 @@
 
+v1.0.8
+------
+
+Very important dependency upgrade: string-kit since 0.7.14 was totally messing with color and %I %Y and %E
+
+
 v1.0.7
 ------
 
