@@ -57,7 +57,7 @@ BrowserConsoleTransport.prototype.transport = function transport( data , cache )
 } ;
 
 
-},{"logfella-common-transport":10,"seventh":21}],2:[function(require,module,exports){
+},{"logfella-common-transport":11,"seventh":22}],2:[function(require,module,exports){
 (function (process){
 /*
 	Logfella
@@ -768,7 +768,7 @@ else {
 
 
 }).call(this,require('_process'))
-},{"../../../":undefined,"../../../package.json":undefined,"./BrowserConsole.transport.js":1,"./messageFormatter.js":3,"./timeFormatter.js":4,"_process":13,"kung-fig-tree-ops":9,"logfella-common-transport":10,"os":11,"path":12,"seventh":21,"string-kit":33,"util":47}],3:[function(require,module,exports){
+},{"../../../":undefined,"../../../package.json":undefined,"./BrowserConsole.transport.js":1,"./messageFormatter.js":3,"./timeFormatter.js":4,"_process":14,"kung-fig-tree-ops":10,"logfella-common-transport":11,"os":12,"path":13,"seventh":22,"string-kit":34,"util":47}],3:[function(require,module,exports){
 /*
 	Logfella
 
@@ -1041,7 +1041,7 @@ exports.json = function json( data , cache ) {
 
 
 
-},{"string-kit":33,"tree-kit":44}],4:[function(require,module,exports){
+},{"string-kit":34,"tree-kit":45}],4:[function(require,module,exports){
 /*
 	Logfella
 
@@ -1301,7 +1301,7 @@ function typedArraySupport () {
   // Can typed array instances can be augmented?
   try {
     var arr = new Uint8Array(1)
-    arr.__proto__ = {__proto__: Uint8Array.prototype, foo: function () { return 42 }}
+    arr.__proto__ = { __proto__: Uint8Array.prototype, foo: function () { return 42 } }
     return arr.foo() === 42
   } catch (e) {
     return false
@@ -1309,26 +1309,24 @@ function typedArraySupport () {
 }
 
 Object.defineProperty(Buffer.prototype, 'parent', {
+  enumerable: true,
   get: function () {
-    if (!(this instanceof Buffer)) {
-      return undefined
-    }
+    if (!Buffer.isBuffer(this)) return undefined
     return this.buffer
   }
 })
 
 Object.defineProperty(Buffer.prototype, 'offset', {
+  enumerable: true,
   get: function () {
-    if (!(this instanceof Buffer)) {
-      return undefined
-    }
+    if (!Buffer.isBuffer(this)) return undefined
     return this.byteOffset
   }
 })
 
 function createBuffer (length) {
   if (length > K_MAX_LENGTH) {
-    throw new RangeError('Invalid typed array length')
+    throw new RangeError('The value "' + length + '" is invalid for option "size"')
   }
   // Return an augmented `Uint8Array` instance
   var buf = new Uint8Array(length)
@@ -1350,8 +1348,8 @@ function Buffer (arg, encodingOrOffset, length) {
   // Common case.
   if (typeof arg === 'number') {
     if (typeof encodingOrOffset === 'string') {
-      throw new Error(
-        'If encoding is specified then the first argument must be a string'
+      throw new TypeError(
+        'The "string" argument must be of type string. Received type number'
       )
     }
     return allocUnsafe(arg)
@@ -1360,7 +1358,7 @@ function Buffer (arg, encodingOrOffset, length) {
 }
 
 // Fix subarray() in ES2016. See: https://github.com/feross/buffer/pull/97
-if (typeof Symbol !== 'undefined' && Symbol.species &&
+if (typeof Symbol !== 'undefined' && Symbol.species != null &&
     Buffer[Symbol.species] === Buffer) {
   Object.defineProperty(Buffer, Symbol.species, {
     value: null,
@@ -1373,19 +1371,51 @@ if (typeof Symbol !== 'undefined' && Symbol.species &&
 Buffer.poolSize = 8192 // not used by this implementation
 
 function from (value, encodingOrOffset, length) {
-  if (typeof value === 'number') {
-    throw new TypeError('"value" argument must not be a number')
-  }
-
-  if (isArrayBuffer(value) || (value && isArrayBuffer(value.buffer))) {
-    return fromArrayBuffer(value, encodingOrOffset, length)
-  }
-
   if (typeof value === 'string') {
     return fromString(value, encodingOrOffset)
   }
 
-  return fromObject(value)
+  if (ArrayBuffer.isView(value)) {
+    return fromArrayLike(value)
+  }
+
+  if (value == null) {
+    throw TypeError(
+      'The first argument must be one of type string, Buffer, ArrayBuffer, Array, ' +
+      'or Array-like Object. Received type ' + (typeof value)
+    )
+  }
+
+  if (isInstance(value, ArrayBuffer) ||
+      (value && isInstance(value.buffer, ArrayBuffer))) {
+    return fromArrayBuffer(value, encodingOrOffset, length)
+  }
+
+  if (typeof value === 'number') {
+    throw new TypeError(
+      'The "value" argument must not be of type number. Received type number'
+    )
+  }
+
+  var valueOf = value.valueOf && value.valueOf()
+  if (valueOf != null && valueOf !== value) {
+    return Buffer.from(valueOf, encodingOrOffset, length)
+  }
+
+  var b = fromObject(value)
+  if (b) return b
+
+  if (typeof Symbol !== 'undefined' && Symbol.toPrimitive != null &&
+      typeof value[Symbol.toPrimitive] === 'function') {
+    return Buffer.from(
+      value[Symbol.toPrimitive]('string'), encodingOrOffset, length
+    )
+  }
+
+  throw new TypeError(
+    'The first argument must be one of type string, Buffer, ArrayBuffer, Array, ' +
+    'or Array-like Object. Received type ' + (typeof value)
+  )
 }
 
 /**
@@ -1409,7 +1439,7 @@ function assertSize (size) {
   if (typeof size !== 'number') {
     throw new TypeError('"size" argument must be of type number')
   } else if (size < 0) {
-    throw new RangeError('"size" argument must not be negative')
+    throw new RangeError('The value "' + size + '" is invalid for option "size"')
   }
 }
 
@@ -1524,20 +1554,16 @@ function fromObject (obj) {
     return buf
   }
 
-  if (obj) {
-    if (ArrayBuffer.isView(obj) || 'length' in obj) {
-      if (typeof obj.length !== 'number' || numberIsNaN(obj.length)) {
-        return createBuffer(0)
-      }
-      return fromArrayLike(obj)
+  if (obj.length !== undefined) {
+    if (typeof obj.length !== 'number' || numberIsNaN(obj.length)) {
+      return createBuffer(0)
     }
-
-    if (obj.type === 'Buffer' && Array.isArray(obj.data)) {
-      return fromArrayLike(obj.data)
-    }
+    return fromArrayLike(obj)
   }
 
-  throw new TypeError('The first argument must be one of type string, Buffer, ArrayBuffer, Array, or Array-like Object.')
+  if (obj.type === 'Buffer' && Array.isArray(obj.data)) {
+    return fromArrayLike(obj.data)
+  }
 }
 
 function checked (length) {
@@ -1558,12 +1584,17 @@ function SlowBuffer (length) {
 }
 
 Buffer.isBuffer = function isBuffer (b) {
-  return b != null && b._isBuffer === true
+  return b != null && b._isBuffer === true &&
+    b !== Buffer.prototype // so Buffer.isBuffer(Buffer.prototype) will be false
 }
 
 Buffer.compare = function compare (a, b) {
+  if (isInstance(a, Uint8Array)) a = Buffer.from(a, a.offset, a.byteLength)
+  if (isInstance(b, Uint8Array)) b = Buffer.from(b, b.offset, b.byteLength)
   if (!Buffer.isBuffer(a) || !Buffer.isBuffer(b)) {
-    throw new TypeError('Arguments must be Buffers')
+    throw new TypeError(
+      'The "buf1", "buf2" arguments must be one of type Buffer or Uint8Array'
+    )
   }
 
   if (a === b) return 0
@@ -1624,7 +1655,7 @@ Buffer.concat = function concat (list, length) {
   var pos = 0
   for (i = 0; i < list.length; ++i) {
     var buf = list[i]
-    if (ArrayBuffer.isView(buf)) {
+    if (isInstance(buf, Uint8Array)) {
       buf = Buffer.from(buf)
     }
     if (!Buffer.isBuffer(buf)) {
@@ -1640,15 +1671,19 @@ function byteLength (string, encoding) {
   if (Buffer.isBuffer(string)) {
     return string.length
   }
-  if (ArrayBuffer.isView(string) || isArrayBuffer(string)) {
+  if (ArrayBuffer.isView(string) || isInstance(string, ArrayBuffer)) {
     return string.byteLength
   }
   if (typeof string !== 'string') {
-    string = '' + string
+    throw new TypeError(
+      'The "string" argument must be one of type string, Buffer, or ArrayBuffer. ' +
+      'Received type ' + typeof string
+    )
   }
 
   var len = string.length
-  if (len === 0) return 0
+  var mustMatch = (arguments.length > 2 && arguments[2] === true)
+  if (!mustMatch && len === 0) return 0
 
   // Use a for loop to avoid recursion
   var loweredCase = false
@@ -1660,7 +1695,6 @@ function byteLength (string, encoding) {
         return len
       case 'utf8':
       case 'utf-8':
-      case undefined:
         return utf8ToBytes(string).length
       case 'ucs2':
       case 'ucs-2':
@@ -1672,7 +1706,9 @@ function byteLength (string, encoding) {
       case 'base64':
         return base64ToBytes(string).length
       default:
-        if (loweredCase) return utf8ToBytes(string).length // assume utf8
+        if (loweredCase) {
+          return mustMatch ? -1 : utf8ToBytes(string).length // assume utf8
+        }
         encoding = ('' + encoding).toLowerCase()
         loweredCase = true
     }
@@ -1819,16 +1855,20 @@ Buffer.prototype.equals = function equals (b) {
 Buffer.prototype.inspect = function inspect () {
   var str = ''
   var max = exports.INSPECT_MAX_BYTES
-  if (this.length > 0) {
-    str = this.toString('hex', 0, max).match(/.{2}/g).join(' ')
-    if (this.length > max) str += ' ... '
-  }
+  str = this.toString('hex', 0, max).replace(/(.{2})/g, '$1 ').trim()
+  if (this.length > max) str += ' ... '
   return '<Buffer ' + str + '>'
 }
 
 Buffer.prototype.compare = function compare (target, start, end, thisStart, thisEnd) {
+  if (isInstance(target, Uint8Array)) {
+    target = Buffer.from(target, target.offset, target.byteLength)
+  }
   if (!Buffer.isBuffer(target)) {
-    throw new TypeError('Argument must be a Buffer')
+    throw new TypeError(
+      'The "target" argument must be one of type Buffer or Uint8Array. ' +
+      'Received type ' + (typeof target)
+    )
   }
 
   if (start === undefined) {
@@ -1907,7 +1947,7 @@ function bidirectionalIndexOf (buffer, val, byteOffset, encoding, dir) {
   } else if (byteOffset < -0x80000000) {
     byteOffset = -0x80000000
   }
-  byteOffset = +byteOffset  // Coerce to Number.
+  byteOffset = +byteOffset // Coerce to Number.
   if (numberIsNaN(byteOffset)) {
     // byteOffset: it it's undefined, null, NaN, "foo", etc, search whole buffer
     byteOffset = dir ? 0 : (buffer.length - 1)
@@ -2159,8 +2199,8 @@ function utf8Slice (buf, start, end) {
     var codePoint = null
     var bytesPerSequence = (firstByte > 0xEF) ? 4
       : (firstByte > 0xDF) ? 3
-      : (firstByte > 0xBF) ? 2
-      : 1
+        : (firstByte > 0xBF) ? 2
+          : 1
 
     if (i + bytesPerSequence <= end) {
       var secondByte, thirdByte, fourthByte, tempCodePoint
@@ -2823,7 +2863,7 @@ Buffer.prototype.fill = function fill (val, start, end, encoding) {
   } else {
     var bytes = Buffer.isBuffer(val)
       ? val
-      : new Buffer(val, encoding)
+      : Buffer.from(val, encoding)
     var len = bytes.length
     if (len === 0) {
       throw new TypeError('The value "' + val +
@@ -2978,15 +3018,16 @@ function blitBuffer (src, dst, offset, length) {
   return i
 }
 
-// ArrayBuffers from another context (i.e. an iframe) do not pass the `instanceof` check
-// but they should be treated as valid. See: https://github.com/feross/buffer/issues/166
-function isArrayBuffer (obj) {
-  return obj instanceof ArrayBuffer ||
-    (obj != null && obj.constructor != null && obj.constructor.name === 'ArrayBuffer' &&
-      typeof obj.byteLength === 'number')
+// ArrayBuffer or Uint8Array objects from other contexts (i.e. iframes) do not pass
+// the `instanceof` check but they should be treated as of that type.
+// See: https://github.com/feross/buffer/issues/166
+function isInstance (obj, type) {
+  return obj instanceof type ||
+    (obj != null && obj.constructor != null && obj.constructor.name != null &&
+      obj.constructor.name === type.name)
 }
-
 function numberIsNaN (obj) {
+  // For IE11 support
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
@@ -3077,10 +3118,35 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 }
 
 },{}],8:[function(require,module,exports){
+if (typeof Object.create === 'function') {
+  // implementation from standard node.js 'util' module
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    ctor.prototype = Object.create(superCtor.prototype, {
+      constructor: {
+        value: ctor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+      }
+    });
+  };
+} else {
+  // old school shim for old browsers
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    var TempCtor = function () {}
+    TempCtor.prototype = superCtor.prototype
+    ctor.prototype = new TempCtor()
+    ctor.prototype.constructor = ctor
+  }
+}
+
+},{}],9:[function(require,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
- * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @author   Feross Aboukhadijeh <https://feross.org>
  * @license  MIT
  */
 
@@ -3099,7 +3165,7 @@ function isSlowBuffer (obj) {
   return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
 }
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 /*
 	Kung Fig Tree Ops
 
@@ -3906,7 +3972,7 @@ treeOps.extendTreeOperators = function extendTreeOperators( operators ) {
 
 
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 /*
 	Logfella Common Transport
 
@@ -3979,7 +4045,7 @@ CommonTransport.prototype.transport = function transport( data , cache ) {} ;
 CommonTransport.prototype.shutdown = function shutdown() {} ;
 
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 exports.endianness = function () { return 'LE' };
 
 exports.hostname = function () {
@@ -4030,8 +4096,11 @@ exports.homedir = function () {
 	return '/'
 };
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 (function (process){
+// .dirname, .basename, and .extname methods are extracted from Node.js v8.11.1,
+// backported and transplited with Babel, with backwards-compat fixes
+
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4082,14 +4151,6 @@ function normalizeArray(parts, allowAboveRoot) {
 
   return parts;
 }
-
-// Split a filename into [root, dir, basename, ext], unix version
-// 'root' is just a slash, or nothing.
-var splitPathRe =
-    /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
-var splitPath = function(filename) {
-  return splitPathRe.exec(filename).slice(1);
-};
 
 // path.resolve([from ...], to)
 // posix version
@@ -4206,37 +4267,120 @@ exports.relative = function(from, to) {
 exports.sep = '/';
 exports.delimiter = ':';
 
-exports.dirname = function(path) {
-  var result = splitPath(path),
-      root = result[0],
-      dir = result[1];
-
-  if (!root && !dir) {
-    // No dirname whatsoever
-    return '.';
+exports.dirname = function (path) {
+  if (typeof path !== 'string') path = path + '';
+  if (path.length === 0) return '.';
+  var code = path.charCodeAt(0);
+  var hasRoot = code === 47 /*/*/;
+  var end = -1;
+  var matchedSlash = true;
+  for (var i = path.length - 1; i >= 1; --i) {
+    code = path.charCodeAt(i);
+    if (code === 47 /*/*/) {
+        if (!matchedSlash) {
+          end = i;
+          break;
+        }
+      } else {
+      // We saw the first non-path separator
+      matchedSlash = false;
+    }
   }
 
-  if (dir) {
-    // It has a dirname, strip trailing slash
-    dir = dir.substr(0, dir.length - 1);
+  if (end === -1) return hasRoot ? '/' : '.';
+  if (hasRoot && end === 1) {
+    // return '//';
+    // Backwards-compat fix:
+    return '/';
   }
-
-  return root + dir;
+  return path.slice(0, end);
 };
 
+function basename(path) {
+  if (typeof path !== 'string') path = path + '';
 
-exports.basename = function(path, ext) {
-  var f = splitPath(path)[2];
-  // TODO: make this comparison case-insensitive on windows?
+  var start = 0;
+  var end = -1;
+  var matchedSlash = true;
+  var i;
+
+  for (i = path.length - 1; i >= 0; --i) {
+    if (path.charCodeAt(i) === 47 /*/*/) {
+        // If we reached a path separator that was not part of a set of path
+        // separators at the end of the string, stop now
+        if (!matchedSlash) {
+          start = i + 1;
+          break;
+        }
+      } else if (end === -1) {
+      // We saw the first non-path separator, mark this as the end of our
+      // path component
+      matchedSlash = false;
+      end = i + 1;
+    }
+  }
+
+  if (end === -1) return '';
+  return path.slice(start, end);
+}
+
+// Uses a mixed approach for backwards-compatibility, as ext behavior changed
+// in new Node.js versions, so only basename() above is backported here
+exports.basename = function (path, ext) {
+  var f = basename(path);
   if (ext && f.substr(-1 * ext.length) === ext) {
     f = f.substr(0, f.length - ext.length);
   }
   return f;
 };
 
+exports.extname = function (path) {
+  if (typeof path !== 'string') path = path + '';
+  var startDot = -1;
+  var startPart = 0;
+  var end = -1;
+  var matchedSlash = true;
+  // Track the state of characters (if any) we see before our first dot and
+  // after any path separator we find
+  var preDotState = 0;
+  for (var i = path.length - 1; i >= 0; --i) {
+    var code = path.charCodeAt(i);
+    if (code === 47 /*/*/) {
+        // If we reached a path separator that was not part of a set of path
+        // separators at the end of the string, stop now
+        if (!matchedSlash) {
+          startPart = i + 1;
+          break;
+        }
+        continue;
+      }
+    if (end === -1) {
+      // We saw the first non-path separator, mark this as the end of our
+      // extension
+      matchedSlash = false;
+      end = i + 1;
+    }
+    if (code === 46 /*.*/) {
+        // If this is our first dot, mark it as the start of our extension
+        if (startDot === -1)
+          startDot = i;
+        else if (preDotState !== 1)
+          preDotState = 1;
+    } else if (startDot !== -1) {
+      // We saw a non-dot and non-path separator before our dot, so we should
+      // have a good chance at having a non-empty extension
+      preDotState = -1;
+    }
+  }
 
-exports.extname = function(path) {
-  return splitPath(path)[3];
+  if (startDot === -1 || end === -1 ||
+      // We saw a non-dot character immediately before the dot
+      preDotState === 0 ||
+      // The (right-most) trimmed path component is exactly '..'
+      preDotState === 1 && startDot === end - 1 && startDot === startPart + 1) {
+    return '';
+  }
+  return path.slice(startDot, end);
 };
 
 function filter (xs, f) {
@@ -4258,7 +4402,7 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":13}],13:[function(require,module,exports){
+},{"_process":14}],14:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -4444,7 +4588,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 (function (process,global){
 (function (global, undefined) {
     "use strict";
@@ -4634,7 +4778,7 @@ process.umask = function() { return 0; };
 }(typeof self === "undefined" ? typeof global === "undefined" ? this : global : self));
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":13}],15:[function(require,module,exports){
+},{"_process":14}],16:[function(require,module,exports){
 /*
 	Seventh
 
@@ -4718,7 +4862,7 @@ Promise.promisifyAnyNodeApi = ( api , suffix , multiSuffix , filter ) => {
 
 
 
-},{"./seventh.js":21}],16:[function(require,module,exports){
+},{"./seventh.js":22}],17:[function(require,module,exports){
 /*
 	Seventh
 
@@ -5305,7 +5449,7 @@ Promise.race = Promise.Native.race.bind( Promise.Native ) ;
 
 
 
-},{"./seventh.js":21}],17:[function(require,module,exports){
+},{"./seventh.js":22}],18:[function(require,module,exports){
 (function (process,global,setImmediate){
 /*
 	Seventh
@@ -5422,7 +5566,6 @@ Promise.prototype.resolve = Promise.prototype.fulfill = function resolve( value 
 	}
 
 	return this._resolveValue( value ) ;
-
 } ;
 
 
@@ -5730,6 +5873,19 @@ Promise.prototype.callbackAll = function callbackAll( cb ) {
 
 
 
+Promise.prototype.toPromise = function toPromise( promise ) {
+	this._then(
+		value => { promise.resolve( value ) ; } ,
+		error => { promise.reject( error ) ; }
+	) ;
+
+	return this ;
+} ;
+
+
+
+
+
 /*
 	Static factories.
 */
@@ -5770,24 +5926,6 @@ Promise.resolveTimeout = Promise.fulfillTimeout = function resolveTimeout( timeo
 
 Promise.rejectTimeout = function rejectTimeout( timeout , error ) {
 	return new Promise( ( resolve , reject ) => setTimeout( () => reject( error ) , timeout ) ) ;
-} ;
-
-
-
-// A timeout that is greater if CPU-bound tasks are in progress.
-Promise.resolveBusyTimeout = function resolveBusyTimeout( timeout , value ) {
-	return new Promise( resolve =>
-		setTimeout(
-			() => setTimeout(
-				() => setTimeout(
-					() => setTimeout(
-						() => resolve( value ) ,
-						0
-					) , timeout / 2
-				) , timeout / 2
-			) , 0
-		)
-	) ;
 } ;
 
 
@@ -5905,9 +6043,13 @@ Promise.prototype._unhandledRejection = function _unhandledRejection() {
 	} ) ;
 	*/
 
+	// It looks like 'await' inside a 'try-catch' does not handle the promise soon enough -_-'
+	//const nextTick_ = nextTick ;
+	const nextTick_ = cb => setTimeout( cb , 0 ) ;
+
 	//*
 	if ( this.value instanceof Error ) {
-		nextTick( () => {
+		nextTick_( () => {
 			if ( this.handledRejection === false ) {
 				this.value.message = 'Unhandled promise rejection: ' + this.value.message ;
 				console.error( this.value ) ;
@@ -5917,7 +6059,7 @@ Promise.prototype._unhandledRejection = function _unhandledRejection() {
 	else {
 		// Avoid starting the stack trace in the nextTick()...
 		let error_ = new Error( 'Unhandled promise rejection' ) ;
-		nextTick( () => {
+		nextTick_( () => {
 			if ( this.handledRejection === false ) {
 				console.error( error_ ) ;
 				console.error( 'Rejection reason:' , this.value ) ;
@@ -5960,11 +6102,11 @@ Promise.prototype.inspect = function inspect() {
 
 
 // A shared dummy promise, when you just want to return an immediately thenable
-Promise.dummy = Promise.resolve() ;
+Promise.resolved = Promise.dummy = Promise.resolve() ;
 
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("timers").setImmediate)
-},{"_process":13,"setimmediate":14,"timers":37}],18:[function(require,module,exports){
+},{"_process":14,"setimmediate":15,"timers":38}],19:[function(require,module,exports){
 /*
 	Seventh
 
@@ -6307,7 +6449,7 @@ Promise.variableRetry = ( asyncFn , thisBinding ) => {
 */
 
 
-},{"./seventh.js":21}],19:[function(require,module,exports){
+},{"./seventh.js":22}],20:[function(require,module,exports){
 (function (process){
 /*
 	Seventh
@@ -6407,7 +6549,7 @@ Promise.resolveSafeTimeout = function resolveSafeTimeout( timeout , value ) {
 
 
 }).call(this,require('_process'))
-},{"./seventh.js":21,"_process":13}],20:[function(require,module,exports){
+},{"./seventh.js":22,"_process":14}],21:[function(require,module,exports){
 /*
 	Seventh
 
@@ -6459,7 +6601,7 @@ Promise.parasite = () => {
 } ;
 
 
-},{"./seventh.js":21}],21:[function(require,module,exports){
+},{"./seventh.js":22}],22:[function(require,module,exports){
 /*
 	Seventh
 
@@ -6502,7 +6644,7 @@ require( './parasite.js' ) ;
 require( './misc.js' ) ;
 
 
-},{"./api.js":15,"./batch.js":16,"./core.js":17,"./decorators.js":18,"./misc.js":19,"./parasite.js":20,"./wrapper.js":22}],22:[function(require,module,exports){
+},{"./api.js":16,"./batch.js":17,"./core.js":18,"./decorators.js":19,"./misc.js":20,"./parasite.js":21,"./wrapper.js":23}],23:[function(require,module,exports){
 /*
 	Seventh
 
@@ -6537,9 +6679,10 @@ var Promise = require( './seventh.js' ) ;
 
 
 
-Promise.timeLimit = ( timeout , asyncFn ) => {
+Promise.timeLimit = ( timeout , asyncFnOrPromise ) => {
 	return new Promise( ( resolve , reject ) => {
-		asyncFn().then( resolve , reject ) ;
+		if ( typeof asyncFnOrPromise === 'function' ) { asyncFnOrPromise = asyncFnOrPromise() ; }
+		Promise.resolve( asyncFnOrPromise ).then( resolve , reject ) ;
 		setTimeout( () => reject( new Error( "Timeout" ) ) , timeout ) ;
 	} ) ;
 } ;
@@ -6599,7 +6742,7 @@ Promise.onceEventAll = ( emitter , eventName ) => {
 
 
 
-},{"./seventh.js":21}],23:[function(require,module,exports){
+},{"./seventh.js":22}],24:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6678,7 +6821,7 @@ module.exports = {
 
 
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6715,14 +6858,21 @@ module.exports = camel ;
 
 
 // Transform alphanum separated by underscore or minus to camel case
-camel.toCamelCase = function toCamelCase( str ) {
+camel.toCamelCase = function toCamelCase( str , preserveUpperCase = false ) {
 	if ( ! str || typeof str !== 'string' ) { return '' ; }
 
 	return str.replace( /^[\s_-]*([^\s_-]+)|[\s_-]+([^\s_-]?)([^\s_-]*)/g , ( match , firstWord , firstLetter , endOfWord ) => {
 
+		if ( preserveUpperCase ) {
+			if ( firstWord ) { return firstWord ; }
+			if ( ! firstLetter ) { return '' ; }
+			return firstLetter.toUpperCase() + endOfWord ;
+		}
+
 		if ( firstWord ) { return firstWord.toLowerCase() ; }
 		if ( ! firstLetter ) { return '' ; }
 		return firstLetter.toUpperCase() + endOfWord.toLowerCase() ;
+
 	} ) ;
 } ;
 
@@ -6742,7 +6892,7 @@ camel.camelCaseToDashed = function camelCaseToDash( str ) {
 
 
 
-},{}],25:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6814,12 +6964,16 @@ exports.shellArg = function escapeShellArg( str ) {
 
 
 var escapeControlMap = {
-	'\r': '\\r' , '\n': '\\n' , '\t': '\\t' , '\x7f': '\\x7f'
+	'\r': '\\r' ,
+	'\n': '\\n' ,
+	'\t': '\\t' ,
+	'\x7f': '\\x7f'
 } ;
 
 // Escape \r \n \t so they become readable again, escape all ASCII control character as well, using \x syntaxe
-exports.control = function escapeControl( str ) {
+exports.control = function escapeControl( str , keepNewLineAndTab = false ) {
 	return str.replace( /[\x00-\x1f\x7f]/g , ( match ) => {
+		if ( keepNewLineAndTab && ( match === '\n' || match === '\t' ) ) { return match ; }
 		if ( escapeControlMap[ match ] !== undefined ) { return escapeControlMap[ match ] ; }
 		var hex = match.charCodeAt( 0 ).toString( 16 ) ;
 		if ( hex.length % 2 ) { hex = '0' + hex ; }
@@ -6830,7 +6984,11 @@ exports.control = function escapeControl( str ) {
 
 
 var escapeHtmlMap = {
-	'&': '&amp;' , '<': '&lt;' , '>': '&gt;' , '"': '&quot;' , "'": '&#039;'
+	'&': '&amp;' ,
+	'<': '&lt;' ,
+	'>': '&gt;' ,
+	'"': '&quot;' ,
+	"'": '&#039;'
 } ;
 
 // Only escape & < > so this is suited for content outside tags
@@ -6849,8 +7007,7 @@ exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
 } ;
 
 
-
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 (function (Buffer){
 /*
 	String Kit
@@ -6891,6 +7048,7 @@ exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
 // Load modules
 var inspect = require( './inspect.js' ).inspect ;
 var inspectError = require( './inspect.js' ).inspectError ;
+var escape = require( './escape.js' ) ;
 var ansi = require( './ansi.js' ) ;
 
 
@@ -6898,6 +7056,7 @@ var ansi = require( './ansi.js' ) ;
 /*
 	%%		a single %
 	%s		string
+	%r		raw string: without sanitizer
 	%f		float
 	%d	%i	integer
 	%u		unsigned integer
@@ -6933,8 +7092,7 @@ exports.formatMethod = function format( ... args ) {
 		else { str = '' ; }
 	}
 
-	var arg , value ,
-		autoIndex = 1 , length = args.length ,
+	var arg , autoIndex = 1 , length = args.length ,
 		hasMarkup = false , shift = null , markupStack = [] ;
 
 	if ( this.markupReset && this.startingMarkupReset ) {
@@ -6948,12 +7106,13 @@ exports.formatMethod = function format( ... args ) {
 	str = str.replace( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/g ,
 		( match , markup , doublePercent , relative , index , modeArg , mode ) => {
 
-			var replacement , i , n , depth , tmp , fn , fnArgString , argMatches , argList = [] ;
+			var replacement , i , tmp , fn , fnArgString , argMatches , argList = [] ;
 
 			//console.log( 'replaceArgs:' , arguments ) ;
 			if ( doublePercent ) { return '%' ; }
 
 			if ( markup ) {
+				if ( this.noMarkup ) { return '^' + markup ; }
 				if ( markup === '^' ) { return '^' ; }
 
 				if ( this.shiftMarkup && this.shiftMarkup[ markup ] ) {
@@ -7017,139 +7176,53 @@ exports.formatMethod = function format( ... args ) {
 			if ( index >= length || index < 1 ) { arg = undefined ; }
 			else { arg = args[ index ] ; }
 
-			switch ( mode ) {
-				case 's' :	// string
-					if ( arg === null || arg === undefined ) { return '(' + arg + ')' ; }
-					if ( typeof arg === 'string' ) { return arg ; }
-					if ( typeof arg === 'number' ) { return '' + arg ; }
-					if ( typeof arg.toString === 'function' ) { return arg.toString() ; }
-					return '(' + arg + ')' ;
-				case 'f' :	// float
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg !== 'number' ) { return '0' ; }
-					if ( modeArg !== undefined ) {
-						// Use jQuery number format?
-						switch ( modeArg[ 0 ] ) {
-							case 'p' :
-								n = parseInt( modeArg.slice( 1 ) , 10 ) ;
-								if ( n >= 1 ) { arg = arg.toPrecision( n ) ; }
-								break ;
-							case 'f' :
-								n = parseInt( modeArg.slice( 1 ) , 10 ) ;
-								arg = arg.toFixed( n ) ;
-								break ;
-						}
-					}
-					return '' + arg ;
-				case 'd' :
-				case 'i' :	// integer decimal
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.floor( arg ) ; }
-					return '0' ;
-				case 'k' :	// metric prefixes (like k,M,G, etc)
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg !== 'number' ) { return '0' ; }
-					return metricPrefix( arg ) ;
-				case 'u' :	// unsigned decimal
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ) ; }
-					return '0' ;
-				case 'U' :	// unsigned positive decimal
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 1 ) ; }
-					return '1' ;
-				case 'x' :	// unsigned hexadecimal, force pair of symbole
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg !== 'number' ) { return '0' ; }
-					value = '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ;
-					if ( value.length % 2 ) { value = '0' + value ; }
-					return value ;
-				case 'h' :	// unsigned hexadecimal
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ; }
-					return '0' ;
-				case 'o' :	// unsigned octal
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 8 ) ; }
-					return '0' ;
-				case 'b' :	// unsigned binary
-					if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-					if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 2 ) ; }
-					return '0' ;
-				case 'z' :	// base64
-					if ( typeof arg === 'string' ) { arg = Buffer.from( arg ) ; }
-					else if ( ! Buffer.isBuffer( arg ) ) { return '' ; }
-					return arg.toString( 'base64' ) ;
-				case 'Z' :	// base64url
-					if ( typeof arg === 'string' ) { arg = Buffer.from( arg ) ; }
-					else if ( ! Buffer.isBuffer( arg ) ) { return '' ; }
-					return arg.toString( 'base64' ).replace( /\+/g , '-' ).replace( /\//g , '_' ).replace( /[=]{1,2}$/g , '' ) ;
-				case 'I' :
-					depth = 3 ;
-					if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
-					return inspect( {
-						depth: depth ,
-						style: ( this && this.color ? 'color' : 'none' )
-					} , arg ) ;
-				case 'Y' :
-					depth = 3 ;
-					if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
-					return inspect( {
-						depth: depth ,
-						style: ( this && this.color ? 'color' : 'none' ) ,
-						noFunc: true ,
-						enumOnly: true ,
-						noDescriptor: true ,
-						useInspect: true
-					} , arg ) ;
-				case 'E' :
-					return inspectError( { style: ( this && this.color ? 'color' : 'none' ) } , arg ) ;
-				case 'J' :
-					return JSON.stringify( arg ) ;
-				case 'D' :
-					return '' ;
-				case 'F' :	// Function
-
-					autoIndex -- ;	// %F does not eat any arg
-
-					if ( modeArg === undefined ) { return '' ; }
-					tmp = modeArg.split( ':' ) ;
-					fn = tmp[ 0 ] ;
-					fnArgString = tmp[ 1 ] ;
-					if ( ! fn ) { return '' ; }
-
-					if ( fnArgString && ( argMatches = fnArgString.match( /%([+-]?)([0-9]*)[a-zA-Z]/g ) ) ) {
-						//console.log( argMatches ) ;
-						//console.log( fnArgString ) ;
-						for ( i = 0 ; i < argMatches.length ; i ++ ) {
-							relative = argMatches[ i ][ 1 ] ;
-							index = argMatches[ i ][ 2 ] ;
-
-							if ( index ) {
-								index = parseInt( index , 10 ) ;
-
-								if ( relative ) {
-									if ( relative === '+' ) { index = autoIndex + index ; }		// jshint ignore:line
-									else if ( relative === '-' ) { index = autoIndex - index ; }	// jshint ignore:line
-								}
-							}
-							else {
-								index = autoIndex ;
-							}
-
-							autoIndex ++ ;
-
-							if ( index >= length || index < 1 ) { argList[ i ] = undefined ; }
-							else { argList[ i ] = args[ index ] ; }
-						}
-					}
-
-					if ( ! this || ! this.fn || typeof this.fn[ fn ] !== 'function' ) { return '' ; }
-					return this.fn[ fn ].apply( this , argList ) ;
-
-				default :
-					return '' ;
+			if ( modes[ mode ] ) {
+				replacement = modes[ mode ]( arg , modeArg , this ) ;
+				if ( this.argumentSanitizer && ! modes[ mode ].noSanitize ) { replacement = this.argumentSanitizer( replacement ) ; }
+				return replacement ;
 			}
+
+			// Function mode
+			if ( mode === 'F' ) {
+				autoIndex -- ;	// %F does not eat any arg
+
+				if ( modeArg === undefined ) { return '' ; }
+				tmp = modeArg.split( ':' ) ;
+				fn = tmp[ 0 ] ;
+				fnArgString = tmp[ 1 ] ;
+				if ( ! fn ) { return '' ; }
+
+				if ( fnArgString && ( argMatches = fnArgString.match( /%([+-]?)([0-9]*)[a-zA-Z]/g ) ) ) {
+					//console.log( argMatches ) ;
+					//console.log( fnArgString ) ;
+					for ( i = 0 ; i < argMatches.length ; i ++ ) {
+						relative = argMatches[ i ][ 1 ] ;
+						index = argMatches[ i ][ 2 ] ;
+
+						if ( index ) {
+							index = parseInt( index , 10 ) ;
+
+							if ( relative ) {
+								if ( relative === '+' ) { index = autoIndex + index ; }		// jshint ignore:line
+								else if ( relative === '-' ) { index = autoIndex - index ; }	// jshint ignore:line
+							}
+						}
+						else {
+							index = autoIndex ;
+						}
+
+						autoIndex ++ ;
+
+						if ( index >= length || index < 1 ) { argList[ i ] = undefined ; }
+						else { argList[ i ] = args[ index ] ; }
+					}
+				}
+
+				if ( ! this || ! this.fn || typeof this.fn[ fn ] !== 'function' ) { return '' ; }
+				return this.fn[ fn ].apply( this , argList ) ;
+			}
+
+			return '' ;
 		}
 	) ;
 
@@ -7171,9 +7244,191 @@ exports.formatMethod = function format( ... args ) {
 } ;
 
 
+var modes = {} ;
+
+
+
+// string
+modes.s = arg => {
+	if ( typeof arg === 'string' ) { return arg ; }
+	if ( arg === null || arg === undefined || arg === true || arg === false ) { return '(' + arg + ')' ; }
+	if ( typeof arg === 'number' ) { return '' + arg ; }
+	if ( typeof arg.toString === 'function' ) { return arg.toString() ; }
+	return '(' + arg + ')' ;
+} ;
+
+modes.r = arg => modes.s( arg ) ;
+modes.r.noSanitize = true ;
+
+
+
+// float
+modes.f = ( arg , modeArg ) => {
+	var n ;
+
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg !== 'number' ) { return '0' ; }
+	if ( modeArg !== undefined ) {
+		// Use jQuery number format?
+		switch ( modeArg[ 0 ] ) {
+			case 'p' :
+				n = parseInt( modeArg.slice( 1 ) , 10 ) ;
+				if ( n >= 1 ) { arg = arg.toPrecision( n ) ; }
+				break ;
+			case 'f' :
+				n = parseInt( modeArg.slice( 1 ) , 10 ) ;
+				arg = arg.toFixed( n ) ;
+				break ;
+		}
+	}
+	return '' + arg ;
+} ;
+
+
+
+// integer
+modes.d = modes.i = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg === 'number' ) { return '' + Math.floor( arg ) ; }
+	return '0' ;
+} ;
+
+
+
+// metric system
+modes.k = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg !== 'number' ) { return '0' ; }
+	return metricPrefix( arg ) ;
+} ;
+
+
+
+// unsigned integer
+modes.u = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ) ; }
+	return '0' ;
+} ;
+
+
+
+// unsigned positive integer
+modes.U = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 1 ) ; }
+	return '1' ;
+} ;
+
+
+
+// unsigned hexadecimal, force pair of symboles
+modes.x = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg !== 'number' ) { return '0' ; }
+
+	var value = '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ;
+
+	if ( value.length % 2 ) { value = '0' + value ; }
+	return value ;
+} ;
+
+
+
+// unsigned hexadecimal
+modes.h = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ; }
+	return '0' ;
+} ;
+
+
+
+// unsigned octal
+modes.o = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 8 ) ; }
+	return '0' ;
+} ;
+
+
+
+// unsigned binary
+modes.b = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 2 ) ; }
+	return '0' ;
+} ;
+
+
+
+// base64
+modes.z = arg => {
+	if ( typeof arg === 'string' ) { arg = Buffer.from( arg ) ; }
+	else if ( ! Buffer.isBuffer( arg ) ) { return '' ; }
+	return arg.toString( 'base64' ) ;
+} ;
+
+
+
+// base64url
+modes.Z = arg => {
+	if ( typeof arg === 'string' ) { arg = Buffer.from( arg ) ; }
+	else if ( ! Buffer.isBuffer( arg ) ) { return '' ; }
+	return arg.toString( 'base64' ).replace( /\+/g , '-' ).replace( /\//g , '_' ).replace( /[=]{1,2}$/g , '' ) ;
+} ;
+
+
+
+// inspect
+modes.I = ( arg , modeArg , options ) => {
+	var depth = 3 ;
+	if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
+	return inspect( {
+		depth: depth ,
+		style: ( options && options.color ? 'color' : 'none' )
+	} , arg ) ;
+} ;
+
+modes.I.noSanitize = true ;
+
+
+
+// more minimalist inspect
+modes.Y = ( arg , modeArg , options ) => {
+	var depth = 3 ;
+	if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
+	return inspect( {
+		depth: depth ,
+		style: ( options && options.color ? 'color' : 'none' ) ,
+		noFunc: true ,
+		enumOnly: true ,
+		noDescriptor: true ,
+		useInspect: true
+	} , arg ) ;
+} ;
+
+modes.Y.noSanitize = true ;
+
+
+
+// inspect error
+modes.E = ( arg , modeArg , options ) => inspectError( { style: ( options && options.color ? 'color' : 'none' ) } , arg ) ;
+modes.E.noSanitize = true ;
+
+// json
+modes.J = arg => arg === undefined ? 'null' : JSON.stringify( arg ) ;
+
+// drop
+modes.D = () => '' ;
+
+
 
 var defaultFormatter = {
+	argumentSanitizer: str => escape.control( str , true ) ,
 	extraArguments: true ,
+	color: false ,
+	noMarkup: false ,
 	endingMarkupReset: true ,
 	startingMarkupReset: false ,
 	markupReset: ansi.reset ,
@@ -7232,6 +7487,7 @@ var defaultFormatter = {
 	}
 } ;
 
+exports.createFormatter = ( options ) => exports.formatMethod.bind( Object.assign( {} , defaultFormatter , options ) ) ;
 exports.format = exports.formatMethod.bind( defaultFormatter ) ;
 exports.format.default = defaultFormatter ;
 
@@ -7309,6 +7565,7 @@ exports.markupMethod = function markup_( str ) {
 
 
 
+exports.createMarkup = ( options ) => exports.markupMethod.bind( Object.assign( {} , defaultFormatter , options ) ) ;
 exports.markup = exports.markupMethod.bind( defaultFormatter ) ;
 
 
@@ -7398,7 +7655,7 @@ function round( v , step ) {
 
 
 }).call(this,require("buffer").Buffer)
-},{"./ansi.js":23,"./inspect.js":27,"buffer":6}],27:[function(require,module,exports){
+},{"./ansi.js":24,"./escape.js":26,"./inspect.js":28,"buffer":6}],28:[function(require,module,exports){
 (function (Buffer,process){
 /*
 	String Kit
@@ -7425,8 +7682,6 @@ function round( v , step ) {
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 	SOFTWARE.
 */
-
-/* global Map, Set */
 
 /*
 	Variable inspector.
@@ -7633,20 +7888,25 @@ function inspect_( runtime , options , variable ) {
 		if ( options.sort ) { propertyList.sort() ; }
 
 		// Special Objects
-		specialObject = specialObjectSubstitution( variable , options ) ;
+		specialObject = specialObjectSubstitution( variable , runtime , options ) ;
 
 		if ( options.protoBlackList && options.protoBlackList.has( proto ) ) {
 			str += options.style.limit( '[skip]' ) + options.style.newline ;
 		}
 		else if ( specialObject !== undefined ) {
-			str += '=> ' + inspect_( {
-				depth: runtime.depth ,
-				ancestors: runtime.ancestors ,
-				noPre: true
-			} ,
-			options ,
-			specialObject
-			) ;
+			if ( typeof specialObject === 'string' ) {
+				str += '=> ' + specialObject ;
+			}
+			else {
+				str += '=> ' + inspect_( {
+					depth: runtime.depth ,
+					ancestors: runtime.ancestors ,
+					noPre: true
+				} ,
+				options ,
+				specialObject
+				) ;
+			}
 		}
 		else if ( isFunc && ! options.funcDetails ) {
 			str += options.style.newline ;
@@ -7762,50 +8022,89 @@ function keyNeedingQuotes( key ) {
 
 
 
+var promiseStates = [ 'pending' , 'fulfilled' , 'rejected' ] ;
+
+
+
 // Some special object are better written down when substituted by something else
-function specialObjectSubstitution( object , options ) {
+function specialObjectSubstitution( object , runtime , options ) {
 	if ( typeof object.constructor !== 'function' ) {
 		// Some objects have no constructor, e.g.: Object.create(null)
 		//console.error( object ) ;
 		return ;
 	}
 
-	switch ( object.constructor.name ) {
-		case 'String' :
-			if ( object instanceof String ) {
-				return object.toString() ;
+	if ( object instanceof String ) {
+		return object.toString() ;
+	}
+
+	if ( object instanceof RegExp ) {
+		return object.toString() ;
+	}
+
+	if ( object instanceof Date ) {
+		return object.toString() + ' [' + object.getTime() + ']' ;
+	}
+
+	if ( typeof Set === 'function' && object instanceof Set ) {
+		// This is an ES6 'Set' Object
+		return Array.from( object ) ;
+	}
+
+	if ( typeof Map === 'function' && object instanceof Map ) {
+		// This is an ES6 'Map' Object
+		return Array.from( object ) ;
+	}
+
+	if ( object instanceof Promise ) {
+		if ( process && process.binding && process.binding( 'util' ) && process.binding( 'util' ).getPromiseDetails ) {
+			let details = process.binding( 'util' ).getPromiseDetails( object ) ;
+			let state =  promiseStates[ details[ 0 ] ] ;
+			let str = 'Promise <' + state + '>' ;
+
+			if ( state === 'fulfilled' ) {
+				str += ' ' + inspect_(
+					{
+						depth: runtime.depth ,
+						ancestors: runtime.ancestors ,
+						noPre: true
+					} ,
+					options ,
+					details[ 1 ]
+				) ;
 			}
-			break ;
-		case 'RegExp' :
-			if ( object instanceof RegExp ) {
-				return object.toString() ;
+			else if ( state === 'rejected' ) {
+				if ( details[ 1 ] instanceof Error ) {
+					str += ' ' + inspectError(
+						{
+							style: options.style ,
+							noErrorStack: true
+						} ,
+						details[ 1 ]
+					) ;
+				}
+				else {
+					str += ' ' + inspect_(
+						{
+							depth: runtime.depth ,
+							ancestors: runtime.ancestors ,
+							noPre: true
+						} ,
+						options ,
+						details[ 1 ]
+					) ;
+				}
 			}
-			break ;
-		case 'Date' :
-			if ( object instanceof Date ) {
-				return object.toString() + ' [' + object.getTime() + ']' ;
-			}
-			break ;
-		case 'Set' :
-			if ( typeof Set === 'function' && object instanceof Set ) {
-				// This is an ES6 'Set' Object
-				return Array.from( object ) ;
-			}
-			break ;
-		case 'Map' :
-			if ( typeof Map === 'function' && object instanceof Map ) {
-				// This is an ES6 'Map' Object
-				return Array.from( object ) ;
-			}
-			break ;
-		case 'ObjectID' :
-			if ( object._bsontype ) {
-				// This is a MongoDB ObjectID, rather boring to display in its original form
-				// due to esoteric characters that confuse both the user and the terminal displaying it.
-				// Substitute it to its string representation
-				return object.toString() ;
-			}
-			break ;
+
+			return str ;
+		}
+	}
+
+	if ( object._bsontype ) {
+		// This is a MongoDB ObjectID, rather boring to display in its original form
+		// due to esoteric characters that confuse both the user and the terminal displaying it.
+		// Substitute it to its string representation
+		return object.toString() ;
 	}
 
 	if ( options.useInspect && typeof object.inspect === 'function' ) {
@@ -7817,6 +8116,10 @@ function specialObjectSubstitution( object , options ) {
 
 
 
+/*
+	Options:
+		noErrorStack: set to true if the stack should not be displayed
+*/
 function inspectError( options , error ) {
 	var str = '' , stack , type , code ;
 
@@ -7830,7 +8133,7 @@ function inspectError( options , error ) {
 	if ( ! options.style ) { options.style = inspectStyle.none ; }
 	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
 
-	if ( error.stack ) { stack = inspectStack( options , error.stack ) ; }
+	if ( error.stack && ! options.noErrorStack ) { stack = inspectStack( options , error.stack ) ; }
 
 	type = error.type || error.constructor.name ;
 	code = error.code || error.name || error.errno || error.number ;
@@ -7997,9 +8300,9 @@ inspectStyle.html = Object.assign( {} , inspectStyle.none , {
 
 
 }).call(this,{"isBuffer":require("../../is-buffer/index.js")},require('_process'))
-},{"../../is-buffer/index.js":8,"./ansi.js":23,"./escape.js":25,"_process":13}],28:[function(require,module,exports){
+},{"../../is-buffer/index.js":9,"./ansi.js":24,"./escape.js":26,"_process":14}],29:[function(require,module,exports){
 module.exports={"߀":"0","́":""," ":" ","Ⓐ":"A","Ａ":"A","À":"A","Á":"A","Â":"A","Ầ":"A","Ấ":"A","Ẫ":"A","Ẩ":"A","Ã":"A","Ā":"A","Ă":"A","Ằ":"A","Ắ":"A","Ẵ":"A","Ẳ":"A","Ȧ":"A","Ǡ":"A","Ä":"A","Ǟ":"A","Ả":"A","Å":"A","Ǻ":"A","Ǎ":"A","Ȁ":"A","Ȃ":"A","Ạ":"A","Ậ":"A","Ặ":"A","Ḁ":"A","Ą":"A","Ⱥ":"A","Ɐ":"A","Ꜳ":"AA","Æ":"AE","Ǽ":"AE","Ǣ":"AE","Ꜵ":"AO","Ꜷ":"AU","Ꜹ":"AV","Ꜻ":"AV","Ꜽ":"AY","Ⓑ":"B","Ｂ":"B","Ḃ":"B","Ḅ":"B","Ḇ":"B","Ƀ":"B","Ɓ":"B","ｃ":"C","Ⓒ":"C","Ｃ":"C","Ꜿ":"C","Ḉ":"C","Ç":"C","Ⓓ":"D","Ｄ":"D","Ḋ":"D","Ď":"D","Ḍ":"D","Ḑ":"D","Ḓ":"D","Ḏ":"D","Đ":"D","Ɗ":"D","Ɖ":"D","ᴅ":"D","Ꝺ":"D","Ð":"Dh","Ǳ":"DZ","Ǆ":"DZ","ǲ":"Dz","ǅ":"Dz","ɛ":"E","Ⓔ":"E","Ｅ":"E","È":"E","É":"E","Ê":"E","Ề":"E","Ế":"E","Ễ":"E","Ể":"E","Ẽ":"E","Ē":"E","Ḕ":"E","Ḗ":"E","Ĕ":"E","Ė":"E","Ë":"E","Ẻ":"E","Ě":"E","Ȅ":"E","Ȇ":"E","Ẹ":"E","Ệ":"E","Ȩ":"E","Ḝ":"E","Ę":"E","Ḙ":"E","Ḛ":"E","Ɛ":"E","Ǝ":"E","ᴇ":"E","ꝼ":"F","Ⓕ":"F","Ｆ":"F","Ḟ":"F","Ƒ":"F","Ꝼ":"F","Ⓖ":"G","Ｇ":"G","Ǵ":"G","Ĝ":"G","Ḡ":"G","Ğ":"G","Ġ":"G","Ǧ":"G","Ģ":"G","Ǥ":"G","Ɠ":"G","Ꞡ":"G","Ᵹ":"G","Ꝿ":"G","ɢ":"G","Ⓗ":"H","Ｈ":"H","Ĥ":"H","Ḣ":"H","Ḧ":"H","Ȟ":"H","Ḥ":"H","Ḩ":"H","Ḫ":"H","Ħ":"H","Ⱨ":"H","Ⱶ":"H","Ɥ":"H","Ⓘ":"I","Ｉ":"I","Ì":"I","Í":"I","Î":"I","Ĩ":"I","Ī":"I","Ĭ":"I","İ":"I","Ï":"I","Ḯ":"I","Ỉ":"I","Ǐ":"I","Ȉ":"I","Ȋ":"I","Ị":"I","Į":"I","Ḭ":"I","Ɨ":"I","Ⓙ":"J","Ｊ":"J","Ĵ":"J","Ɉ":"J","ȷ":"J","Ⓚ":"K","Ｋ":"K","Ḱ":"K","Ǩ":"K","Ḳ":"K","Ķ":"K","Ḵ":"K","Ƙ":"K","Ⱪ":"K","Ꝁ":"K","Ꝃ":"K","Ꝅ":"K","Ꞣ":"K","Ⓛ":"L","Ｌ":"L","Ŀ":"L","Ĺ":"L","Ľ":"L","Ḷ":"L","Ḹ":"L","Ļ":"L","Ḽ":"L","Ḻ":"L","Ł":"L","Ƚ":"L","Ɫ":"L","Ⱡ":"L","Ꝉ":"L","Ꝇ":"L","Ꞁ":"L","Ǉ":"LJ","ǈ":"Lj","Ⓜ":"M","Ｍ":"M","Ḿ":"M","Ṁ":"M","Ṃ":"M","Ɱ":"M","Ɯ":"M","ϻ":"M","Ꞥ":"N","Ƞ":"N","Ⓝ":"N","Ｎ":"N","Ǹ":"N","Ń":"N","Ñ":"N","Ṅ":"N","Ň":"N","Ṇ":"N","Ņ":"N","Ṋ":"N","Ṉ":"N","Ɲ":"N","Ꞑ":"N","ᴎ":"N","Ǌ":"NJ","ǋ":"Nj","Ⓞ":"O","Ｏ":"O","Ò":"O","Ó":"O","Ô":"O","Ồ":"O","Ố":"O","Ỗ":"O","Ổ":"O","Õ":"O","Ṍ":"O","Ȭ":"O","Ṏ":"O","Ō":"O","Ṑ":"O","Ṓ":"O","Ŏ":"O","Ȯ":"O","Ȱ":"O","Ö":"O","Ȫ":"O","Ỏ":"O","Ő":"O","Ǒ":"O","Ȍ":"O","Ȏ":"O","Ơ":"O","Ờ":"O","Ớ":"O","Ỡ":"O","Ở":"O","Ợ":"O","Ọ":"O","Ộ":"O","Ǫ":"O","Ǭ":"O","Ø":"O","Ǿ":"O","Ɔ":"O","Ɵ":"O","Ꝋ":"O","Ꝍ":"O","Œ":"OE","Ƣ":"OI","Ꝏ":"OO","Ȣ":"OU","Ⓟ":"P","Ｐ":"P","Ṕ":"P","Ṗ":"P","Ƥ":"P","Ᵽ":"P","Ꝑ":"P","Ꝓ":"P","Ꝕ":"P","Ⓠ":"Q","Ｑ":"Q","Ꝗ":"Q","Ꝙ":"Q","Ɋ":"Q","Ⓡ":"R","Ｒ":"R","Ŕ":"R","Ṙ":"R","Ř":"R","Ȑ":"R","Ȓ":"R","Ṛ":"R","Ṝ":"R","Ŗ":"R","Ṟ":"R","Ɍ":"R","Ɽ":"R","Ꝛ":"R","Ꞧ":"R","Ꞃ":"R","Ⓢ":"S","Ｓ":"S","ẞ":"S","Ś":"S","Ṥ":"S","Ŝ":"S","Ṡ":"S","Š":"S","Ṧ":"S","Ṣ":"S","Ṩ":"S","Ș":"S","Ş":"S","Ȿ":"S","Ꞩ":"S","Ꞅ":"S","Ⓣ":"T","Ｔ":"T","Ṫ":"T","Ť":"T","Ṭ":"T","Ț":"T","Ţ":"T","Ṱ":"T","Ṯ":"T","Ŧ":"T","Ƭ":"T","Ʈ":"T","Ⱦ":"T","Ꞇ":"T","Þ":"Th","Ꜩ":"TZ","Ⓤ":"U","Ｕ":"U","Ù":"U","Ú":"U","Û":"U","Ũ":"U","Ṹ":"U","Ū":"U","Ṻ":"U","Ŭ":"U","Ü":"U","Ǜ":"U","Ǘ":"U","Ǖ":"U","Ǚ":"U","Ủ":"U","Ů":"U","Ű":"U","Ǔ":"U","Ȕ":"U","Ȗ":"U","Ư":"U","Ừ":"U","Ứ":"U","Ữ":"U","Ử":"U","Ự":"U","Ụ":"U","Ṳ":"U","Ų":"U","Ṷ":"U","Ṵ":"U","Ʉ":"U","Ⓥ":"V","Ｖ":"V","Ṽ":"V","Ṿ":"V","Ʋ":"V","Ꝟ":"V","Ʌ":"V","Ꝡ":"VY","Ⓦ":"W","Ｗ":"W","Ẁ":"W","Ẃ":"W","Ŵ":"W","Ẇ":"W","Ẅ":"W","Ẉ":"W","Ⱳ":"W","Ⓧ":"X","Ｘ":"X","Ẋ":"X","Ẍ":"X","Ⓨ":"Y","Ｙ":"Y","Ỳ":"Y","Ý":"Y","Ŷ":"Y","Ỹ":"Y","Ȳ":"Y","Ẏ":"Y","Ÿ":"Y","Ỷ":"Y","Ỵ":"Y","Ƴ":"Y","Ɏ":"Y","Ỿ":"Y","Ⓩ":"Z","Ｚ":"Z","Ź":"Z","Ẑ":"Z","Ż":"Z","Ž":"Z","Ẓ":"Z","Ẕ":"Z","Ƶ":"Z","Ȥ":"Z","Ɀ":"Z","Ⱬ":"Z","Ꝣ":"Z","ⓐ":"a","ａ":"a","ẚ":"a","à":"a","á":"a","â":"a","ầ":"a","ấ":"a","ẫ":"a","ẩ":"a","ã":"a","ā":"a","ă":"a","ằ":"a","ắ":"a","ẵ":"a","ẳ":"a","ȧ":"a","ǡ":"a","ä":"a","ǟ":"a","ả":"a","å":"a","ǻ":"a","ǎ":"a","ȁ":"a","ȃ":"a","ạ":"a","ậ":"a","ặ":"a","ḁ":"a","ą":"a","ⱥ":"a","ɐ":"a","ɑ":"a","ꜳ":"aa","æ":"ae","ǽ":"ae","ǣ":"ae","ꜵ":"ao","ꜷ":"au","ꜹ":"av","ꜻ":"av","ꜽ":"ay","ⓑ":"b","ｂ":"b","ḃ":"b","ḅ":"b","ḇ":"b","ƀ":"b","ƃ":"b","ɓ":"b","Ƃ":"b","ⓒ":"c","ć":"c","ĉ":"c","ċ":"c","č":"c","ç":"c","ḉ":"c","ƈ":"c","ȼ":"c","ꜿ":"c","ↄ":"c","C":"c","Ć":"c","Ĉ":"c","Ċ":"c","Č":"c","Ƈ":"c","Ȼ":"c","ⓓ":"d","ｄ":"d","ḋ":"d","ď":"d","ḍ":"d","ḑ":"d","ḓ":"d","ḏ":"d","đ":"d","ƌ":"d","ɖ":"d","ɗ":"d","Ƌ":"d","Ꮷ":"d","ԁ":"d","Ɦ":"d","ð":"dh","ǳ":"dz","ǆ":"dz","ⓔ":"e","ｅ":"e","è":"e","é":"e","ê":"e","ề":"e","ế":"e","ễ":"e","ể":"e","ẽ":"e","ē":"e","ḕ":"e","ḗ":"e","ĕ":"e","ė":"e","ë":"e","ẻ":"e","ě":"e","ȅ":"e","ȇ":"e","ẹ":"e","ệ":"e","ȩ":"e","ḝ":"e","ę":"e","ḙ":"e","ḛ":"e","ɇ":"e","ǝ":"e","ⓕ":"f","ｆ":"f","ḟ":"f","ƒ":"f","ﬀ":"ff","ﬁ":"fi","ﬂ":"fl","ﬃ":"ffi","ﬄ":"ffl","ⓖ":"g","ｇ":"g","ǵ":"g","ĝ":"g","ḡ":"g","ğ":"g","ġ":"g","ǧ":"g","ģ":"g","ǥ":"g","ɠ":"g","ꞡ":"g","ꝿ":"g","ᵹ":"g","ⓗ":"h","ｈ":"h","ĥ":"h","ḣ":"h","ḧ":"h","ȟ":"h","ḥ":"h","ḩ":"h","ḫ":"h","ẖ":"h","ħ":"h","ⱨ":"h","ⱶ":"h","ɥ":"h","ƕ":"hv","ⓘ":"i","ｉ":"i","ì":"i","í":"i","î":"i","ĩ":"i","ī":"i","ĭ":"i","ï":"i","ḯ":"i","ỉ":"i","ǐ":"i","ȉ":"i","ȋ":"i","ị":"i","į":"i","ḭ":"i","ɨ":"i","ı":"i","ⓙ":"j","ｊ":"j","ĵ":"j","ǰ":"j","ɉ":"j","ⓚ":"k","ｋ":"k","ḱ":"k","ǩ":"k","ḳ":"k","ķ":"k","ḵ":"k","ƙ":"k","ⱪ":"k","ꝁ":"k","ꝃ":"k","ꝅ":"k","ꞣ":"k","ⓛ":"l","ｌ":"l","ŀ":"l","ĺ":"l","ľ":"l","ḷ":"l","ḹ":"l","ļ":"l","ḽ":"l","ḻ":"l","ſ":"l","ł":"l","ƚ":"l","ɫ":"l","ⱡ":"l","ꝉ":"l","ꞁ":"l","ꝇ":"l","ɭ":"l","ǉ":"lj","ⓜ":"m","ｍ":"m","ḿ":"m","ṁ":"m","ṃ":"m","ɱ":"m","ɯ":"m","ⓝ":"n","ｎ":"n","ǹ":"n","ń":"n","ñ":"n","ṅ":"n","ň":"n","ṇ":"n","ņ":"n","ṋ":"n","ṉ":"n","ƞ":"n","ɲ":"n","ŉ":"n","ꞑ":"n","ꞥ":"n","ԉ":"n","ǌ":"nj","ⓞ":"o","ｏ":"o","ò":"o","ó":"o","ô":"o","ồ":"o","ố":"o","ỗ":"o","ổ":"o","õ":"o","ṍ":"o","ȭ":"o","ṏ":"o","ō":"o","ṑ":"o","ṓ":"o","ŏ":"o","ȯ":"o","ȱ":"o","ö":"o","ȫ":"o","ỏ":"o","ő":"o","ǒ":"o","ȍ":"o","ȏ":"o","ơ":"o","ờ":"o","ớ":"o","ỡ":"o","ở":"o","ợ":"o","ọ":"o","ộ":"o","ǫ":"o","ǭ":"o","ø":"o","ǿ":"o","ꝋ":"o","ꝍ":"o","ɵ":"o","ɔ":"o","ᴑ":"o","œ":"oe","ƣ":"oi","ꝏ":"oo","ȣ":"ou","ⓟ":"p","ｐ":"p","ṕ":"p","ṗ":"p","ƥ":"p","ᵽ":"p","ꝑ":"p","ꝓ":"p","ꝕ":"p","ρ":"p","ⓠ":"q","ｑ":"q","ɋ":"q","ꝗ":"q","ꝙ":"q","ⓡ":"r","ｒ":"r","ŕ":"r","ṙ":"r","ř":"r","ȑ":"r","ȓ":"r","ṛ":"r","ṝ":"r","ŗ":"r","ṟ":"r","ɍ":"r","ɽ":"r","ꝛ":"r","ꞧ":"r","ꞃ":"r","ⓢ":"s","ｓ":"s","ś":"s","ṥ":"s","ŝ":"s","ṡ":"s","š":"s","ṧ":"s","ṣ":"s","ṩ":"s","ș":"s","ş":"s","ȿ":"s","ꞩ":"s","ꞅ":"s","ẛ":"s","ʂ":"s","ß":"ss","ⓣ":"t","ｔ":"t","ṫ":"t","ẗ":"t","ť":"t","ṭ":"t","ț":"t","ţ":"t","ṱ":"t","ṯ":"t","ŧ":"t","ƭ":"t","ʈ":"t","ⱦ":"t","ꞇ":"t","þ":"th","ꜩ":"tz","ⓤ":"u","ｕ":"u","ù":"u","ú":"u","û":"u","ũ":"u","ṹ":"u","ū":"u","ṻ":"u","ŭ":"u","ü":"u","ǜ":"u","ǘ":"u","ǖ":"u","ǚ":"u","ủ":"u","ů":"u","ű":"u","ǔ":"u","ȕ":"u","ȗ":"u","ư":"u","ừ":"u","ứ":"u","ữ":"u","ử":"u","ự":"u","ụ":"u","ṳ":"u","ų":"u","ṷ":"u","ṵ":"u","ʉ":"u","ⓥ":"v","ｖ":"v","ṽ":"v","ṿ":"v","ʋ":"v","ꝟ":"v","ʌ":"v","ꝡ":"vy","ⓦ":"w","ｗ":"w","ẁ":"w","ẃ":"w","ŵ":"w","ẇ":"w","ẅ":"w","ẘ":"w","ẉ":"w","ⱳ":"w","ⓧ":"x","ｘ":"x","ẋ":"x","ẍ":"x","ⓨ":"y","ｙ":"y","ỳ":"y","ý":"y","ŷ":"y","ỹ":"y","ȳ":"y","ẏ":"y","ÿ":"y","ỷ":"y","ẙ":"y","ỵ":"y","ƴ":"y","ɏ":"y","ỿ":"y","ⓩ":"z","ｚ":"z","ź":"z","ẑ":"z","ż":"z","ž":"z","ẓ":"z","ẕ":"z","ƶ":"z","ȥ":"z","ɀ":"z","ⱬ":"z","ꝣ":"z"}
-},{}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8038,7 +8341,7 @@ module.exports = function( str ) {
 
 
 
-},{"./latinize-map.json":28}],30:[function(require,module,exports){
+},{"./latinize-map.json":29}],31:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8098,7 +8401,7 @@ exports.occurenceCount = function occurenceCount( str , subStr ) {
 
 
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8180,7 +8483,7 @@ polyfill.repeat = function( count ) {
 
 
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8237,7 +8540,7 @@ exports.regexp.array2alternatives = function array2alternatives( array ) {
 
 
 
-},{"./escape.js":25}],33:[function(require,module,exports){
+},{"./escape.js":26}],34:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8328,7 +8631,7 @@ stringKit.installPolyfills = function installPolyfills() {
 
 
 
-},{"./ansi.js":23,"./camel.js":24,"./escape.js":25,"./format.js":26,"./inspect.js":27,"./latinize.js":29,"./misc.js":30,"./polyfill.js":31,"./regexp.js":32,"./toTitleCase.js":34,"./unicode.js":35,"./wordwrap.js":36,"xregexp":55}],34:[function(require,module,exports){
+},{"./ansi.js":24,"./camel.js":25,"./escape.js":26,"./format.js":27,"./inspect.js":28,"./latinize.js":30,"./misc.js":31,"./polyfill.js":32,"./regexp.js":33,"./toTitleCase.js":35,"./unicode.js":36,"./wordwrap.js":37,"xregexp":55}],35:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8382,7 +8685,7 @@ module.exports = function toTitleCase( str , options ) {
 
 
 
-},{}],35:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8424,19 +8727,17 @@ module.exports = function toTitleCase( str , options ) {
 
 
 // Create the module and export it
-var unicode = {} ;
+const unicode = {} ;
 module.exports = unicode ;
 
 
 
-unicode.encode = function encode( array ) {
-	return String.fromCodePoint( ... array ) ;
-} ;
+unicode.encode = array => String.fromCodePoint( ... array ) ;
 
 
 
 // Decode a string into an array of unicode codepoints
-unicode.decode = function decode( str ) {
+unicode.decode = str => {
 	var value , extra , counter = 0 , output = [] ,
 		length = str.length ;
 
@@ -8467,9 +8768,49 @@ unicode.decode = function decode( str ) {
 
 
 
+// Decode only the first char
+// Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
+unicode.firstCodePoint = str => {
+	var extra ,
+		value = str.charCodeAt( 0 ) ;
+
+	if ( value >= 0xD800 && value <= 0xDBFF && str.length >= 2 ) {
+		// It's a high surrogate, and there is a next character.
+		extra = str.charCodeAt( 1 ) ;
+
+		if ( ( extra & 0xFC00 ) === 0xDC00 ) {	// Low surrogate.
+			return ( ( value & 0x3FF ) << 10 ) + ( extra & 0x3FF ) + 0x10000 ;
+		}
+	}
+
+	return value ;
+} ;
+
+
+
+// Extract only the first char
+// Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
+unicode.firstChar = str => {
+	var extra ,
+		value = str.charCodeAt( 0 ) ;
+
+	if ( value >= 0xD800 && value <= 0xDBFF && str.length >= 2 ) {
+		// It's a high surrogate, and there is a next character.
+		extra = str.charCodeAt( 1 ) ;
+
+		if ( ( extra & 0xFC00 ) === 0xDC00 ) {	// Low surrogate.
+			return str.slice( 0 , 2 ) ;
+		}
+	}
+
+	return str[ 0 ] ;
+} ;
+
+
+
 // Decode a string into an array of unicode characters
 // Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
-unicode.toArray = function toArray( str ) {
+unicode.toArray = str => {
 	var value , extra , counter = 0 , output = [] ,
 		length = str.length ;
 
@@ -8500,9 +8841,72 @@ unicode.toArray = function toArray( str ) {
 
 
 
+// Decode a string into an array of unicode characters
+// Wide chars have an additionnal filler cell, so position is correct
+// Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
+unicode.toCells = ( Cell , str , tabWidth = 4 , linePosition = 0 , ... extraCellArgs ) => {
+	var value , extra , counter = 0 , output = [] ,
+		fillSize ,
+		length = str.length ;
+
+	while ( counter < length ) {
+		value = str.charCodeAt( counter ++ ) ;
+
+		if ( value === 0x0a ) {	// New line
+			linePosition = 0 ;
+		}
+		else if ( value === 0x09 ) {	// Tab
+			// Depends upon the next tab-stop
+			fillSize = tabWidth - ( linePosition % tabWidth ) - 1 ;
+			output.push( new Cell( '\t' , ... extraCellArgs ) ) ;
+			linePosition += 1 + fillSize ;
+			while ( fillSize -- ) { output.push( new Cell( null , ... extraCellArgs ) ) ; }
+		}
+		else if ( value >= 0xD800 && value <= 0xDBFF && counter < length ) {
+			// It's a high surrogate, and there is a next character.
+			extra = str.charCodeAt( counter ++ ) ;
+
+			if ( ( extra & 0xFC00 ) === 0xDC00 ) {	// Low surrogate.
+				value = ( ( value & 0x3FF ) << 10 ) + ( extra & 0x3FF ) + 0x10000 ;
+				output.push(  new Cell( str.slice( counter - 2 , counter ) , ... extraCellArgs )  ) ;
+				linePosition ++ ;
+
+				if ( unicode.codePointWidth( value ) === 2 ) {
+					linePosition ++ ;
+					output.push( new Cell( null , ... extraCellArgs ) ) ;
+				}
+			}
+			else {
+				// It's an unmatched surrogate, remove it.
+				// Preserve current char in case the next code unit is the high surrogate of a surrogate pair.
+				counter -- ;
+			}
+		}
+		else {
+			output.push(  new Cell( str[ counter - 1 ] , ... extraCellArgs )  ) ;
+			linePosition ++ ;
+
+			if ( unicode.codePointWidth( value ) === 2 ) {
+				output.push( new Cell( null , ... extraCellArgs ) ) ;
+				linePosition ++ ;
+			}
+		}
+	}
+
+	return output ;
+} ;
+
+
+
+unicode.fromCells = ( cells ) => {
+	return cells.map( cell => cell.filler ? '' : cell.char ).join( '' ) ;
+} ;
+
+
+
 // Get the length of an unicode string
 // Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
-unicode.length = function length_( str ) {
+unicode.length = str => {
 	var value , extra , counter = 0 , uLength = 0 ,
 		length = str.length ;
 
@@ -8529,16 +8933,16 @@ unicode.length = function length_( str ) {
 
 
 // Return the width of a string in a terminal/monospace font
-unicode.width = function width( str ) {
+unicode.width = str => {
 	var count = 0 ;
-	unicode.decode( str ).forEach( code => count += unicode.isFullWidthCodePoint( code ) ? 2 : 1 ) ;
+	unicode.decode( str ).forEach( code => count += unicode.codePointWidth( code ) ) ;
 	return count ;
 } ;
 
 
 
 // Return the width of an array of string in a terminal/monospace font
-unicode.arrayWidth = function arrayWidth( array , limit ) {
+unicode.arrayWidth = ( array , limit ) => {
 	var index , count = 0 ;
 
 	if ( limit === undefined ) { limit = array.length ; }
@@ -8554,7 +8958,8 @@ unicode.arrayWidth = function arrayWidth( array , limit ) {
 
 // Return a string that does not exceed the limit
 // Mostly an adaptation of .decode(), not factorized for performance's sake (used by Terminal-kit)
-unicode.widthLimit = function widthLimit( str , limit ) {
+unicode.widthLimit =	// DEPRECATED
+unicode.truncateWidth = ( str , limit ) => {
 	var value , extra , counter = 0 , lastCounter = 0 , width = 0 ,
 		length = str.length ;
 
@@ -8575,7 +8980,7 @@ unicode.widthLimit = function widthLimit( str , limit ) {
 			}
 		}
 
-		width += unicode.isFullWidthCodePoint( value ) ? 2 : 1 ;
+		width += unicode.codePointWidth( value ) ;
 
 		if ( width > limit ) {
 			return str.slice( 0 , lastCounter ) ;
@@ -8598,7 +9003,7 @@ unicode.widthLimit = function widthLimit( str , limit ) {
 
 	Note: it does not check input, to gain perfs.
 */
-unicode.surrogatePair = function surrogatePair( char ) {
+unicode.surrogatePair = char => {
 	var code = char.charCodeAt( 0 ) ;
 
 	if ( code < 0xd800 || code >= 0xe000 ) { return 0 ; }
@@ -8611,9 +9016,16 @@ unicode.surrogatePair = function surrogatePair( char ) {
 /*
 	Check if a character is a full-width char or not.
 */
-unicode.isFullWidth = function isFullWidth( char ) {
+unicode.isFullWidth = char => {
 	if ( char.length <= 1 ) { return unicode.isFullWidthCodePoint( char.codePointAt( 0 ) ) ; }
-	return unicode.isFullWidthCodePoint( unicode.decode( char )[ 0 ] ) ;
+	return unicode.isFullWidthCodePoint( unicode.firstCodePoint( char ) ) ;
+} ;
+
+
+// Return the width of a char, leaner than .width() for one char
+unicode.charWidth = char => {
+	if ( char.length <= 1 ) { return unicode.codePointWidth( char.codePointAt( 0 ) ) ; }
+	return unicode.codePointWidth( unicode.firstCodePoint( char ) ) ;
 } ;
 
 
@@ -8623,7 +9035,7 @@ unicode.isFullWidth = function isFullWidth( char ) {
 
 	Borrowed from Node.js source, from readline.js.
 */
-unicode.isFullWidthCodePoint = function isFullWidthCodePoint( code ) {
+unicode.codePointWidth = code => {
 	// Code points are derived from:
 	// http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
 	if ( code >= 0x1100 && (
@@ -8655,23 +9067,26 @@ unicode.isFullWidthCodePoint = function isFullWidthCodePoint( code ) {
 			0x1f200 <= code && code <= 0x1f251 ||
 			// CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
 			0x20000 <= code && code <= 0x3fffd ) ) {
-		return true ;
+		return 2 ;
 	}
 
-	return false ;
+	return 1 ;
 } ;
+
+// For a true/false type of result
+unicode.isFullWidthCodePoint = code => unicode.codePointWidth( code ) === 2 ;
 
 
 
 // Convert normal ASCII chars to their full-width counterpart
-unicode.toFullWidth = function toFullWidth( str ) {
+unicode.toFullWidth = str => {
 	return String.fromCodePoint( ... unicode.decode( str ).map( code =>
 		code >= 33 && code <= 126  ?  0xff00 + code - 0x20  :  code
 	) ) ;
 } ;
 
 
-},{}],36:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 /*
 	String Kit
 
@@ -8730,16 +9145,18 @@ const FRENCH_DOUBLE_GRAPH_TYPO = {
 		updateOffset: (optional) if set, options.offset is updated with the last line width
 		noTrim: (optional) if set, don't right-trim lines, if not set, right-trim all lines except the last
 		fill: (optional) if set, fill the remaining width with space (it forces noTrim)
-		sequenceSkip: (optional) a function used to skip a whole sequence, useful for special sequences
+		skipFn: (optional) a function used to skip a whole sequence, useful for special sequences
 			like ANSI escape sequence, and so on...
+		charWidthFn: (optional) a function used to compute the width of one char/group of chars
+		regroupFn: (optional) a function used to regroup chars together
 */
 module.exports = function wordwrap( str , options ) {
-	var start = 0 , end , skipEnd , lineWidth , currentLine , currentWidth , lastEnd , lastWidth , lastWasSpace ,
+	var start = 0 , end , skipEnd , lineWidth , currentLine , currentWidth , length ,
+		lastEnd , lastWidth , lastWasSpace , charWidthFn ,
 		explicitNewLine = true ,
 		strArray = unicode.toArray( str ) ,
 		trimNewLine = false ,
-		line , lines = [] ,
-		length = strArray.length ;
+		line , lines = [] ;
 
 	if ( typeof options !== 'object' ) {
 		options = { width: options } ;
@@ -8752,8 +9169,19 @@ module.exports = function wordwrap( str , options ) {
 
 	if ( typeof options.glue !== 'string' ) { options.glue = '\n' ; }
 
-	var getNextLine = () => {
+	if ( options.regroupFn ) {
+		strArray = options.regroupFn( strArray ) ;
+		// If char are grouped, use unicode.width() as a default
+		charWidthFn = options.widthFn || unicode.width ;
+	}
+	else {
+		// If char are not grouped, use unicode.charWidth() as a default
+		charWidthFn = options.widthFn || unicode.charWidth ;
+	}
 
+	length = strArray.length ;
+
+	var getNextLine = () => {
 		//originStart = start ;
 
 		if ( ! explicitNewLine || trimNewLine ) {
@@ -8794,8 +9222,8 @@ module.exports = function wordwrap( str , options ) {
 				return currentLine ;
 			}
 
-			if ( options.sequenceSkip ) {
-				skipEnd = options.sequenceSkip( strArray , end ) ;
+			if ( options.skipFn ) {
+				skipEnd = options.skipFn( strArray , end ) ;
 				if ( skipEnd !== end ) {
 					end = skipEnd ;
 					continue ;
@@ -8811,7 +9239,7 @@ module.exports = function wordwrap( str , options ) {
 				lastWasSpace = false ;
 			}
 
-			currentWidth += unicode.isFullWidth( strArray[ end ] ) ? 2 : 1 ;
+			currentWidth += charWidthFn( strArray[ end ] ) ;
 
 			if ( currentWidth > lineWidth ) {
 				// If lastEnd === start, this is a word that takes the whole line: cut it
@@ -8863,7 +9291,7 @@ module.exports = function wordwrap( str , options ) {
 
 
 
-},{"./unicode.js":35}],37:[function(require,module,exports){
+},{"./unicode.js":36}],38:[function(require,module,exports){
 (function (setImmediate,clearImmediate){
 var nextTick = require('process/browser.js').nextTick;
 var apply = Function.prototype.apply;
@@ -8942,7 +9370,7 @@ exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate :
   delete immediateIds[id];
 };
 }).call(this,require("timers").setImmediate,require("timers").clearImmediate)
-},{"process/browser.js":13,"timers":37}],38:[function(require,module,exports){
+},{"process/browser.js":14,"timers":38}],39:[function(require,module,exports){
 /*
 	Tree Kit
 
@@ -9029,7 +9457,7 @@ module.exports = function clone( originalObject , circular ) {
 	return cloneObject ;
 } ;
 
-},{}],39:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 /*
 	Tree Kit
 
@@ -9185,7 +9613,7 @@ function diff( left , right , options ) {
 exports.diff = diff ;
 
 
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 /*
 	Tree Kit
 
@@ -9225,7 +9653,11 @@ exports.diff = diff ;
 		* own: only copy own properties that are enumerable
 		* nonEnum: copy non-enumerable properties as well, works only with own:true
 		* descriptor: preserve property's descriptor
-		* deep: perform a deep (recursive) extend
+		* deep: boolean/Array/Set, if true perform a deep (recursive) extend, if it is an Array/Set of prototypes, only deep-copy
+			objects of those prototypes
+			(it is a replacement for deepFilter.whitelist which was removed in Tree Kit 0.6).
+		* immutables: an Array/Set of immutable object's prototypes that are filtered out for deep-copy
+			(it is a replacement for deepFilter.blacklist which was removed in Tree Kit 0.6).
 		* maxDepth: used in conjunction with deep, when max depth is reached an exception is raised, default to 100 when
 			the 'circular' option is off, or default to null if 'circular' is on
 		* circular: circular references reconnection
@@ -9242,10 +9674,6 @@ exports.diff = diff ;
 		* flat: extend into the target top-level only, compose name with the path of the source, force 'deep',
 			disable 'unflat', 'proto', 'inherit'
 		* unflat: assume sources are in the 'flat' format, expand all properties deeply into the target, disable 'flat'
-		* deepFilter
-			* blacklist: list of black-listed prototype: the recursiveness of the 'deep' option will be disabled
-				for object whose prototype is listed
-			* whitelist: the opposite of blacklist
 */
 function extend( options , target , ... sources ) {
 	//console.log( "\nextend():\n" , arguments ) ;
@@ -9257,15 +9685,19 @@ function extend( options , target , ... sources ) {
 
 	var runtime = { depth: 0 , prefix: '' } ;
 
+	if ( options.deep ) {
+		if ( Array.isArray( options.deep ) ) { options.deep = new Set( options.deep ) ; }
+		else if ( ! ( options.deep instanceof Set ) ) { options.deep = true ; }
+	}
+
+	if ( options.immutables ) {
+		if ( Array.isArray( options.immutables ) ) { options.immutables = new Set( options.immutables ) ; }
+		else if ( ! ( options.immutables instanceof Set ) ) { delete options.immutables ; }
+	}
+
 	if ( ! options.maxDepth && options.deep && ! options.circular ) { options.maxDepth = 100 ; }
 
 	if ( options.deepFunc ) { options.deep = true ; }
-
-	if ( options.deepFilter && typeof options.deepFilter === 'object' ) {
-		if ( options.deepFilter.whitelist && ( ! Array.isArray( options.deepFilter.whitelist ) || ! options.deepFilter.whitelist.length ) ) { delete options.deepFilter.whitelist ; }
-		if ( options.deepFilter.blacklist && ( ! Array.isArray( options.deepFilter.blacklist ) || ! options.deepFilter.blacklist.length ) ) { delete options.deepFilter.blacklist ; }
-		if ( ! options.deepFilter.whitelist && ! options.deepFilter.blacklist ) { delete options.deepFilter ; }
-	}
 
 	// 'flat' option force 'deep'
 	if ( options.flat ) {
@@ -9396,15 +9828,15 @@ function extendOne( runtime , options , target , source ) {
 		}
 
 
-		if ( options.deep &&	// eslint-disable-line no-constant-condition
-			sourceValue &&
-			( typeof sourceValue === 'object' || ( options.deepFunc && typeof sourceValue === 'function' ) ) &&
-			( ! options.descriptor || ! sourceDescriptor.get ) &&
+		if ( options.deep	// eslint-disable-line no-constant-condition
+			&& sourceValue
+			&& ( typeof sourceValue === 'object' || ( options.deepFunc && typeof sourceValue === 'function' ) )
+			&& ( ! options.descriptor || ! sourceDescriptor.get )
 			// not a condition we just cache sourceValueProto now... ok it's trashy ><
-			( ( sourceValueProto = Object.getPrototypeOf( sourceValue ) ) || true ) &&
-			( ! options.deepFilter ||
-				( ( ! options.deepFilter.whitelist || options.deepFilter.whitelist.indexOf( sourceValueProto ) !== -1 ) &&
-					( ! options.deepFilter.blacklist || options.deepFilter.blacklist.indexOf( sourceValueProto ) === -1 ) ) ) ) {
+			&& ( ( sourceValueProto = Object.getPrototypeOf( sourceValue ) ) || true )
+			&& ( ! ( options.deep instanceof Set ) || options.deep.has( sourceValueProto ) )
+			&& ( ! options.immutables || ! options.immutables.has( sourceValueProto ) )
+		) {
 			if ( options.circular ) {
 				indexOfSource = runtime.references.sources.indexOf( sourceValue ) ;
 			}
@@ -9488,7 +9920,7 @@ function extendOne( runtime , options , target , source ) {
 }
 
 
-},{}],41:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 /*
 	Tree Kit
 
@@ -9520,7 +9952,7 @@ function extendOne( runtime , options , target , source ) {
 
 
 /*
-	== Lazy function ==
+	DEPRECATED, moved to its own module: lazyness
 */
 
 exports.defineLazyProperty = function defineLazyProperty( object , name , func ) {
@@ -9543,7 +9975,7 @@ exports.defineLazyProperty = function defineLazyProperty( object , name , func )
 	} ) ;
 } ;
 
-},{}],42:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 /*
 	Tree Kit
 
@@ -9915,7 +10347,7 @@ masklib.InverseMask.prototype.applyTo = function applyTo( input , context , cont
 	return output ;
 } ;
 
-},{"./tree.js":44,"util":47}],43:[function(require,module,exports){
+},{"./tree.js":45,"util":47}],44:[function(require,module,exports){
 /*
 	Tree Kit
 
@@ -10206,7 +10638,7 @@ treePath.upgrade = function upgrade( object ) {
 
 
 
-},{}],44:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 /*
 	Tree Kit
 
@@ -10237,58 +10669,23 @@ treePath.upgrade = function upgrade( object ) {
 
 
 
-// Create and export
 var tree = {} ;
 module.exports = tree ;
 
 
-// Tier 0: extend() is even used to build the module
-tree.extend = require( './extend.js' ) ;
-
-
-
-tree.extend( null , tree ,
-
-	// Tier 1
+Object.assign( tree ,
+	{
+		extend: require( './extend.js' ) ,
+		clone: require( './clone.js' ) ,
+		path: require( './path.js' )
+	} ,
 	require( './lazy.js' ) ,
-
-	// Tier 2
-	{ clone: require( './clone.js' ) } ,
-
-	// Tier 3
-	{ path: require( './path.js' ) } ,
 	require( './diff.js' ) ,
 	require( './mask.js' )
 ) ;
 
 
-
-},{"./clone.js":38,"./diff.js":39,"./extend.js":40,"./lazy.js":41,"./mask.js":42,"./path.js":43}],45:[function(require,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    ctor.prototype = Object.create(superCtor.prototype, {
-      constructor: {
-        value: ctor,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      }
-    });
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    var TempCtor = function () {}
-    TempCtor.prototype = superCtor.prototype
-    ctor.prototype = new TempCtor()
-    ctor.prototype.constructor = ctor
-  }
-}
-
-},{}],46:[function(require,module,exports){
+},{"./clone.js":39,"./diff.js":40,"./extend.js":41,"./lazy.js":42,"./mask.js":43,"./path.js":44}],46:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
@@ -10885,7 +11282,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":46,"_process":13,"inherits":45}],48:[function(require,module,exports){
+},{"./support/isBuffer":46,"_process":14,"inherits":8}],48:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
