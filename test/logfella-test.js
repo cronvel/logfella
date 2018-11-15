@@ -97,6 +97,7 @@ describe( "Logfella" , function() {
 		
 		logger.error( null , 'ENOENT' , "File '%s' not found", 'toto.txt' ) ;
 		logger.warning( null , { code: 'ENOENT' , file: 'toto.txt' } , "File '%s' not found", 'toto.txt' ) ;
+		logger.warning( null , { code: 'ENOENT' , file: 'toto.txt' , fd: 432 , init: true , object: {a:1,b:2} } , "File '%s' not found", 'toto.txt' ) ;
 		logger.info( 'my-domain' , 'Blah: %s' , 'formated' ) ;
 	} ) ;
 	

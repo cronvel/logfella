@@ -167,7 +167,7 @@ var defaultLevelHash = {} ,
 	var createShortHand = ( level , name_ ) => {
 		Logfella.prototype[ name_ ] = function( ... args ) {
 			// Early exit, if possible
-			if ( level < this.minLevel || level > this.maxLevel ) { return Promise.dummy ; }
+			if ( level < this.minLevel || level > this.maxLevel ) { return Promise.resolved ; }
 			return this.log( level , ... args ) ;
 		} ;
 	} ;
@@ -291,7 +291,7 @@ Logfella.prototype.log = function( level , ... args ) {
 	// Level management should come first for early exit
 	if ( typeof level === 'number' ) {
 		// Fast exit
-		if ( level < this.minLevel || level > this.maxLevel || level >= this.levelArray.length ) { return Promise.dummy ; }
+		if ( level < this.minLevel || level > this.maxLevel || level >= this.levelArray.length ) { return Promise.resolved ; }
 
 		data = {
 			level: level ,
@@ -305,10 +305,10 @@ Logfella.prototype.log = function( level , ... args ) {
 		} ;
 
 		// Fast exit
-		if ( data.level === undefined || data.level < this.minLevel || data.level > this.maxLevel ) { return Promise.dummy ; }
+		if ( data.level === undefined || data.level < this.minLevel || data.level > this.maxLevel ) { return Promise.resolved ; }
 	}
 	else {
-		return Promise.dummy ;
+		return Promise.resolved ;
 	}
 
 
@@ -322,7 +322,7 @@ Logfella.prototype.log = function( level , ... args ) {
 	}
 
 	// Check if there is a 'code/meta' argument
-	if ( args.length > formatedMessageIndex + 1 && typeof args[ formatedMessageIndex + 1 ] !== 'function' ) {
+	if ( args.length > formatedMessageIndex + 1 ) {
 		type = typeof args[ formatedMessageIndex ] ;
 
 		if ( args[ formatedMessageIndex ] && type === 'object' ) {
@@ -370,7 +370,7 @@ Logfella.prototype.log = function( level , ... args ) {
 	if ( this.monHook ) { this.monHook( this.mon ) ; }
 
 	// If there is no transport, skip now... Should come after monitoring operation
-	if ( ! this.logTransports.length ) { return Promise.dummy ; }
+	if ( ! this.logTransports.length ) { return Promise.resolved ; }
 
 
 	formatedMessage = args[ formatedMessageIndex ] ;
@@ -425,7 +425,7 @@ Logfella.prototype.log = function( level , ... args ) {
 
 
 	var eachTransport = transport => {
-		if ( level < transport.minLevel || level > transport.maxLevel )  { return Promise.dummy ; }
+		if ( level < transport.minLevel || level > transport.maxLevel )  { return Promise.resolved ; }
 		return transport.transport( data , cache ) ;
 	} ;
 
@@ -500,7 +500,7 @@ Logfella.prototype.updateMon = function( monModifier ) {
 
 // monFrame()
 Logfella.prototype.monFrame = function() {
-	if ( ! this.monTransports.length ) { return Promise.dummy ; }
+	if ( ! this.monTransports.length ) { return Promise.resolved ; }
 
 	var cache = null ;
 
@@ -874,7 +874,7 @@ function message( data , color ) {
 
 // The default message formater
 exports.text = function text( data , cache ) {
-	var cacheKey ,
+	var cacheKey , metaKeys , first ,
 		levelString = '' , timeString = '' , domainString = '' , idString = '' ,
 		codeString = '' , metaString = '' , messageString = '' , stackString = '' ,
 		separatorString = '' ;
@@ -987,18 +987,52 @@ exports.text = function text( data , cache ) {
 
 
 	// Include custom Meta
-	if ( this.includeUserMeta && data.meta ) {
-		metaString = JSON.stringify( data.meta ) ;
+	if ( this.includeUserMeta && data.meta && ( metaKeys = Object.keys( data.meta ) ).length ) {
 
-		if ( metaString === '{}' ) {
-			// Do not create metaString for empty objects
-			metaString = '' ;
-		}
-		else {
-			metaString = this.color ?
-				string.ansi.blue + metaString + string.ansi.reset + ' ' :
-				metaString + ' ' ;
-		}
+		metaString += this.color ?
+			string.ansi.blue + '[' :
+			'[' ;
+
+		first = true ;
+
+		metaKeys.forEach( metaKey => {
+			if ( ! first ) {
+				metaString += ' ' ;
+				//metaString += string.ansi.brightBlack + '|' ;
+			}
+
+			first = false ;
+
+			metaString += this.color ?
+				string.ansi.yellow + metaKey + string.ansi.brightWhite + ':' :
+				metaKey + ':' ;
+
+			switch ( typeof data.meta[ metaKey ] ) {
+				case 'number' :
+					metaString += this.color ?
+						string.ansi.cyan + data.meta[ metaKey ] :
+						data.meta[ metaKey ] ;
+					break ;
+				case 'string' :
+					metaString += this.color ?
+						string.ansi.blue + string.ansi.italic + string.escape.control( data.meta[ metaKey ] ) + string.ansi.reset :
+						string.escape.controle( data.meta[ metaKey ] ) ;
+					break ;
+				case 'object' :
+					metaString += this.color ?
+						string.ansi.magenta + JSON.stringify( data.meta[ metaKey ] ) :
+						JSON.stringify( data.meta[ metaKey ] ) ;
+					break ;
+				default :
+					metaString += this.color ?
+						string.ansi.cyan + data.meta[ metaKey ] :
+						'(' + data.meta[ metaKey ] + ')' ;
+			}
+		} ) ;
+
+		metaString += this.color ?
+			string.ansi.blue + ']' + string.ansi.reset + ' ' :
+			'] ' ;
 	}
 
 
@@ -1023,7 +1057,7 @@ exports.text = function text( data , cache ) {
 
 
 
-// The default message formater
+// The JSON message formater
 exports.json = function json( data , cache ) {
 	var cacheKey , str ;
 
