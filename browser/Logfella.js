@@ -875,19 +875,22 @@ function message( data , color ) {
 const symbols = [ '●' , '▄' , '▋' , '┃' , '━' , '╋' , '■' , '▲' , '▼' , '◀' , '▶' , '★' , '♠' , '♥' , '♦' , '♣' ] ;
 //const fgColors = [ 'red' , 'green' , 'yellow' , 'blue' , 'magenta' , 'cyan' , 'brightRed' , 'brightGreen' , 'brightYellow' , 'brightBlue' , 'brightMagenta' , 'brightCyan' ] ;
 //const bgColors = [ 'bgRed' , 'bgGreen' , 'bgYellow' , 'bgBlue' , 'bgMagenta' , 'bgCyan' , 'bgBrightRed' , 'bgBrightGreen' , 'bgBrightYellow' , 'bgBrightBlue' , 'bgBrightMagenta' , 'bgBrightCyan' ] ;
-const fgColors = [ 'brightRed' , 'brightGreen' , 'brightYellow' , 'brightBlue' , 'brightMagenta' , 'brightCyan' ] ;
-const bgColors = [ 'bgRed' , 'bgGreen' , 'bgYellow' , 'bgBlue' , 'bgMagenta' , 'bgCyan' ] ;
+const fgColors = [ 'white' , 'brightRed' , 'brightGreen' , 'brightYellow' , 'brightBlue' , 'brightMagenta' , 'brightCyan' ] ;
+const bgColors = [ 'bgBlack' , 'bgRed' , 'bgGreen' , 'bgYellow' , 'bgBlue' , 'bgMagenta' , 'bgCyan' ] ;
 
 
 
 // Naive CRC-like algorithm
 function hashSymbol( value ) {
-	var i , iMax , hash = 0 , output ;
+	var i , iMax , hash = 0 , output , offset ;
 
 	value = '' + value ;
 
+	// At least 3 passes
+	offset = Math.ceil( 3 * 16 / value.length ) ;
+
 	for ( i = 0 , iMax = value.length ; i < iMax ; i ++ ) {
-		hash ^= value.charCodeAt( i ) << ( i % 16 ) ;
+		hash ^= value.charCodeAt( i ) << ( ( i * offset ) % 16 ) ;
 		//hash += value.charCodeAt( i ) ;
 		//hash += value.charCodeAt( i ) * ( i + 1 ) ;
 	}
