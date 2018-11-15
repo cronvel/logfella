@@ -91,13 +91,13 @@ describe( "Logfella" , function() {
 			defaultDomain: 'default-domain'
 		} ) ;
 		
-		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr , symbol: true } ) ;
 		logger.addTransport( 'scatteredFiles' , { minLevel: 'trace' , color: true , path: __dirname + '/log' } ) ;
 		logger.addTransport( 'file' , { minLevel: 'trace' , color: true , path: __dirname + '/log/app.log' } ) ;
 		
 		logger.error( null , 'ENOENT' , "File '%s' not found", 'toto.txt' ) ;
 		logger.warning( null , { code: 'ENOENT' , file: 'toto.txt' } , "File '%s' not found", 'toto.txt' ) ;
-		logger.warning( null , { code: 'ENOENT' , file: 'toto.txt' , fd: 432 , init: true , object: {a:1,b:2} } , "File '%s' not found", 'toto.txt' ) ;
+		logger.warning( null , { code: 'ENOENT' , file: 'toto.txt' , id: ( '' + Math.random() ).slice( 2 , 8 ) , init: true , object: {a:1,b:2} } , "File '%s' not found", 'toto.txt' ) ;
 		logger.info( 'my-domain' , 'Blah: %s' , 'formated' ) ;
 	} ) ;
 	
