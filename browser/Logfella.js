@@ -882,23 +882,24 @@ const bgColors = [ 'bgRed' , 'bgGreen' , 'bgYellow' , 'bgBlue' , 'bgMagenta' , '
 
 // Naive CRC-like algorithm
 function hashSymbol( value ) {
-	var i , iMax , sum = 0 , output ;
+	var i , iMax , hash = 0 , output ;
 
 	value = '' + value ;
 
 	for ( i = 0 , iMax = value.length ; i < iMax ; i ++ ) {
-		sum += value.charCodeAt( i ) ;
-		//sum += value.charCodeAt( i ) * ( i + 1 ) ;
+		hash ^= value.charCodeAt( i ) << ( i % 16 ) ;
+		//hash += value.charCodeAt( i ) ;
+		//hash += value.charCodeAt( i ) * ( i + 1 ) ;
 	}
 
-	output = symbols[ sum % symbols.length ] ;
-	sum = Math.floor( sum / symbols.length ) ;
+	output = symbols[ hash % symbols.length ] ;
+	hash = Math.floor( hash / symbols.length ) ;
 
-	output = string.ansi[ fgColors[ sum % fgColors.length ] ] + output ;
-	sum = Math.floor( sum / fgColors.length ) ;
+	output = string.ansi[ fgColors[ hash % fgColors.length ] ] + output ;
+	hash = Math.floor( hash / fgColors.length ) ;
 
-	output = string.ansi[ bgColors[ sum % bgColors.length ] ] + output ;
-	sum = Math.floor( sum / bgColors.length ) ;
+	output = string.ansi[ bgColors[ hash % bgColors.length ] ] + output ;
+	hash = Math.floor( hash / bgColors.length ) ;
 
 	output += string.ansi.reset ;
 
