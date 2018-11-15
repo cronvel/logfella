@@ -887,7 +887,7 @@ function hashSymbol( value ) {
 	value = '' + value ;
 
 	// At least 3 passes
-	offset = Math.ceil( 3 * 16 / value.length ) ;
+	offset = 3 * 16 / value.length ;
 
 	for ( i = 0 , iMax = value.length ; i < iMax ; i ++ ) {
 		hash ^= value.charCodeAt( i ) << ( ( i * offset ) % 16 ) ;
