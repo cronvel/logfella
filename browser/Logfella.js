@@ -101,7 +101,7 @@ if ( process.browser ) {
 	browserPageTime = Date.now() ;
 
 	if ( process.uptime !== 'function' ) {
-		process.uptime = function uptime() { return Date.now() - browserPageTime ; } ;
+		process.uptime = () => Date.now() - browserPageTime ;
 	}
 }
 else {
@@ -184,7 +184,7 @@ var defaultLevelHash = {} ,
 
 
 // Check if the current level is enable
-Logfella.prototype.checkLevel = function checkLevel( level ) {
+Logfella.prototype.checkLevel = function( level ) {
 	if ( typeof level === 'string' ) {
 		level = this.levelHash[ level ] ;
 	}
@@ -194,7 +194,7 @@ Logfella.prototype.checkLevel = function checkLevel( level ) {
 
 
 
-Logfella.defineOrConfig = function defineOrConfig( name , config ) {
+Logfella.defineOrConfig = function( name , config ) {
 	if ( Logfella[ name ] ) {
 		if ( Logfella[ name ] instanceof Logfella ) {
 			Logfella[ name ].configure( config ) ;
@@ -210,7 +210,7 @@ Logfella.defineOrConfig = function defineOrConfig( name , config ) {
 
 
 
-Logfella.prototype.use = function use( domain ) {
+Logfella.prototype.use = function( domain ) {
 	// Force a domain
 	var logger = Object.create( this , {
 		domain: { value: domain , enumerable: true }
@@ -221,8 +221,20 @@ Logfella.prototype.use = function use( domain ) {
 
 
 
+Logfella.prototype.useHook = function( hook , monHook ) {
+	// Force a domain
+	var logger = Object.create( this , {
+		hook: { value: hook , enumerable: true } ,
+		monHook: { value: monHook , enumerable: true }
+	} ) ;
+
+	return logger ;
+} ;
+
+
+
 Logfella.prototype.setGlobalConfig =
-Logfella.prototype.configure = function configure( config ) {
+Logfella.prototype.configure = function( config ) {
 	var i , iMax ;
 
 	if ( config.app ) { this.app = config.app ; }
@@ -273,7 +285,7 @@ Logfella.prototype.configure = function configure( config ) {
 
 
 // log( level , domain , [code|meta] , formatedMessage , [arg1] , [arg2] , ... )
-Logfella.prototype.log = function log( level , ... args ) {
+Logfella.prototype.log = function( level , ... args ) {
 	var formatCount , formatedMessage , formatedMessageIndex , data , type , o , monModifier , cache = null ;
 
 	// Level management should come first for early exit
@@ -430,7 +442,7 @@ Logfella.prototype.log = function log( level , ... args ) {
 
 
 
-Logfella.prototype.startMon = async function startMon() {
+Logfella.prototype.startMon = async function() {
 	switch ( this.monStatus ) {
 		case 'stopping' :
 			// We have to wait until it is stopped
@@ -468,7 +480,7 @@ Logfella.prototype.startMon = async function startMon() {
 
 
 
-Logfella.prototype.stopMon = function stopMon() {
+Logfella.prototype.stopMon = function() {
 	switch ( this.monStatus ) {
 		case 'stopping' :
 		case 'stopped' :
@@ -480,14 +492,14 @@ Logfella.prototype.stopMon = function stopMon() {
 
 
 
-Logfella.prototype.updateMon = function updateMon( monModifier ) {
+Logfella.prototype.updateMon = function( monModifier ) {
 	treeOps.autoReduce( this.mon , monModifier ) ;
 } ;
 
 
 
 // monFrame()
-Logfella.prototype.monFrame = function monFrame() {
+Logfella.prototype.monFrame = function() {
 	if ( ! this.monTransports.length ) { return Promise.dummy ; }
 
 	var cache = null ;
@@ -521,7 +533,7 @@ Logfella.transports = {} ;
 
 
 
-Logfella.prototype.addTransport = function addTransport( transport , config ) {
+Logfella.prototype.addTransport = function( transport , config ) {
 	var module_ , role , instance ;
 
 	switch ( config.role ) {
@@ -589,7 +601,7 @@ Logfella.prototype.addTransport = function addTransport( transport , config ) {
 
 
 
-Logfella.prototype.removeAllTransports = function removeAllTransports() {
+Logfella.prototype.removeAllTransports = function() {
 	var i , iMax ;
 
 	for ( i = 0 , iMax = this.logTransports.length ; i < iMax ; i ++ ) { this.logTransports[ i ].shutdown() ; }
@@ -602,7 +614,7 @@ Logfella.prototype.removeAllTransports = function removeAllTransports() {
 
 
 // This method should eventually become cross-platform
-Logfella.setStackTraceLimit = function setStackTraceLimit( depth ) {
+Logfella.setStackTraceLimit = function( depth ) {
 	Error.stackTraceLimit = depth ;
 } ;
 
@@ -612,10 +624,10 @@ var exitHandlersInstalled = false ;
 
 if ( process.browser ) {
 	// It does not make sense in browsers...
-	Logfella.prototype.installExitHandlers = function installExitHandlers() {} ;
+	Logfella.prototype.installExitHandlers = function() {} ;
 }
 else {
-	Logfella.prototype.installExitHandlers = function installExitHandlers() {
+	Logfella.prototype.installExitHandlers = function() {
 		var logger = this.root ;
 		var domain = this.domain || 'logfella' ;
 
@@ -709,7 +721,7 @@ function consoleReplacement( type , domain , ... args ) {
 
 
 
-Logfella.prototype.replaceConsole = function replaceConsole() {
+Logfella.prototype.replaceConsole = function() {
 	console.trace = consoleReplacement.bind( this , 'trace' , 'console' ) ;
 	console.log = consoleReplacement.bind( this , 'info' , 'console' ) ;
 	console.info = consoleReplacement.bind( this , 'info' , 'console' ) ;
@@ -719,7 +731,7 @@ Logfella.prototype.replaceConsole = function replaceConsole() {
 
 
 
-Logfella.prototype.restoreConsole = function restoreConsole() {
+Logfella.prototype.restoreConsole = function() {
 	console.trace = consoleBackup.trace ;
 	console.log = consoleBackup.log ;
 	console.info = consoleBackup.info ;
