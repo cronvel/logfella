@@ -128,6 +128,10 @@ function Logfella( config ) {
 	this.monPeriod = null ;
 	this.monStatus = 'stopped' ;
 
+	// Hooks
+	this.hook = null ;
+	this.monHook = null ;
+
 	// Should be not enumerable (circular)
 	Object.defineProperty( this , 'root' , { value: this } ) ;
 
@@ -350,6 +354,8 @@ Logfella.prototype.log = function log( level , ... args ) {
 		treeOps.autoReduce( this.mon , monModifier ) ;
 	}
 
+	// Call the mon hook, if any
+	if ( this.monHook ) { this.monHook( this.mon ) ; }
 
 	// If there is no transport, skip now... Should come after monitoring operation
 	if ( ! this.logTransports.length ) { return Promise.dummy ; }
@@ -401,6 +407,10 @@ Logfella.prototype.log = function log( level , ... args ) {
 	data.pid = this.pid ;
 	data.hostname = this.hostname ;
 	data.messageCache = {} ;
+
+	// Call the hook, if any
+	if ( this.hook ) { this.hook( data ) ; }
+
 
 	var eachTransport = transport => {
 		if ( level < transport.minLevel || level > transport.maxLevel )  { return Promise.dummy ; }
@@ -7632,7 +7642,7 @@ function metricPrefix( n ) {
 		log = Math.floor( Math.log10( n ) ) ;
 		logDiv3 = Math.floor( log / 3 ) ;
 		logMod = log % 3 ;
-		base = round( n / ( 1000 ** logDiv3 ) , roundStep[ logMod ] ) ;
+		base = round( n / ( Math.pow( 1000 , logDiv3 ) ) , roundStep[ logMod ] ) ;
 		prefix = mulPrefix[ logDiv3 ] ;
 	}
 	else {
@@ -7640,7 +7650,7 @@ function metricPrefix( n ) {
 		logDiv3 = Math.floor( log / 3 ) ;
 		logMod = log % 3 ;
 		if ( logMod < 0 ) { logMod += 3 ; }
-		base = round( n / ( 1000 ** logDiv3 ) , roundStep[ logMod ] ) ;
+		base = round( n / ( Math.pow( 1000 , logDiv3 ) ) , roundStep[ logMod ] ) ;
 		prefix = subMulPrefix[ -logDiv3 ] ;
 	}
 
@@ -7895,7 +7905,7 @@ function inspect_( runtime , options , variable ) {
 		}
 		else if ( specialObject !== undefined ) {
 			if ( typeof specialObject === 'string' ) {
-				str += '=> ' + specialObject ;
+				str += '=> ' + specialObject + options.style.newline ;
 			}
 			else {
 				str += '=> ' + inspect_( {
