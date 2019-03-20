@@ -1,7 +1,7 @@
 /*
 	Logfella
 
-	Copyright (c) 2015 - 2018 Cédric Ronvel
+	Copyright (c) 2015 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -241,8 +241,21 @@ describe( "Logfella" , function() {
 		
 		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
 		
-		logger.info( null , 'some format inspect %I' , { one: 1 , two: 'TWO!' } ) ;
+		logger.debug( null , 'some format inspect %I' , { one: 1 , two: 'TWO!' } ) ;
 		logger.error( null , 'some error %E' , new Error( 'Something bad happens' ) ) ;
+	} ) ;
+	
+	it( "new hdebug" , function() {
+		
+		var logger = Logfella.create() ;
+		
+		logger.configure( {
+			minLevel: 'trace' ,
+			defaultDomain: 'default-domain'
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.hdebug( null , 'H Debug!' ) ;
 	} ) ;
 	
 	it( "monitoring" , function() {

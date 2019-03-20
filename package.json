@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "engines": {
     "node": ">=6.0.0"
   },
@@ -11,15 +11,12 @@
   },
   "dependencies": {
     "kung-fig-tree-ops": "^0.45.4",
-    "logfella-common-transport": "^1.0.0",
+    "logfella-common-transport": "^1.0.1",
     "seventh": "^0.7.18",
     "string-kit": "^0.9.1",
-    "tree-kit": "^0.6.0"
+    "tree-kit": "^0.6.1"
   },
-  "devDependencies": {
-    "browserify": "^16.2.3",
-    "uglify-es": "^3.3.9"
-  },
+  "devDependencies": {},
   "scripts": {
     "test": "tea-time -R dot"
   },
@@ -39,7 +36,7 @@
     "title": "Logfella",
     "years": [
       2015,
-      2018
+      2019
     ],
     "owner": "Cédric Ronvel"
   }

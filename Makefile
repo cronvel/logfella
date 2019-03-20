@@ -43,8 +43,8 @@ clean: clean-all
 
 MOCHA=./node_modules/mocha/bin/mocha
 JSHINT=./node_modules/jshint/bin/jshint --verbose
-BROWSERIFY=./node_modules/.bin/browserify
-UGLIFY=./node_modules/.bin/uglifyjs
+BROWSERIFY=browserify
+UGLIFY=uglifyjs
 
 
 
