@@ -425,7 +425,6 @@ Logfella.prototype.log = function( level , ... args ) {
 
 
 	var eachTransport = transport => {
-		console.log( "oh bob!" , level , transport.minLevel , transport.maxLevel ) ;
 		if ( level < transport.minLevel || level > transport.maxLevel )  { return Promise.resolved ; }
 		return transport.transport( data , cache ) ;
 	} ;
