@@ -1,4 +1,11 @@
 
+v1.2.2
+------
+
+Per-domain config improved
+new method: .setDomainConfig()
+
+
 v1.2.1
 ------
 
