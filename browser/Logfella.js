@@ -113,6 +113,7 @@ else {
 
 function Logfella( config ) {
 	this.root = this ;
+	this.perDomain = {} ;
 	this.logTransports = [] ;
 	this.monTransports = [] ;
 	this.app = null ;
@@ -121,6 +122,7 @@ function Logfella( config ) {
 	this.minLevel = 3 ;
 	this.maxLevel = 7 ;
 	this.defaultDomain = 'no-domain' ;
+	this.domain = null ;
 	this.overrideConsole = false ;
 	this.levelArray = defaultLevelArray ;
 	this.levelHash = defaultLevelHash ;
@@ -222,7 +224,7 @@ Logfella.prototype.use = function( domain ) {
 
 
 Logfella.prototype.useHook = function( hook , monHook ) {
-	// Force a domain
+	// Force a hook
 	var logger = Object.create( this , {
 		hook: { value: hook , enumerable: true } ,
 		monHook: { value: monHook , enumerable: true }
@@ -271,6 +273,15 @@ Logfella.prototype.configure = function( config ) {
 		}
 	}
 
+	if ( config.perDomain ) {
+		for ( let k in config.perDomain ) {
+			this.perDomain[ k ] = {
+				minLevel: typeof config.perDomain[ k ].minLevel === 'string' ? this.levelHash[ config.perDomain[ k ].minLevel ] : config.perDomain[ k ].minLevel ,
+				maxLevel: typeof config.perDomain[ k ].maxLevel === 'string' ? this.levelHash[ config.perDomain[ k ].maxLevel ] : config.perDomain[ k ].maxLevel
+			} ;
+		}
+	}
+
 	if ( Array.isArray( config.transports ) ) {
 		this.removeAllTransports() ;
 
@@ -286,7 +297,7 @@ Logfella.prototype.configure = function( config ) {
 
 // log( level , domain , [code|meta] , formatedMessage , [arg1] , [arg2] , ... )
 Logfella.prototype.log = function( level , ... args ) {
-	var formatCount , formatedMessage , formatedMessageIndex , data , type , o , monModifier , cache = null ;
+	var formatCount , formatedMessage , formatedMessageIndex , data , type , o , monModifier , perDomain , cache = null ;
 
 	// Level management should come first for early exit
 	if ( typeof level === 'number' ) {
@@ -319,6 +330,13 @@ Logfella.prototype.log = function( level , ... args ) {
 	else {
 		data.domain = typeof args[ 0 ] === 'string' ? args[ 0 ] : this.defaultDomain ;
 		formatedMessageIndex = 1 ;
+	}
+
+	// Per-domain filtering
+	perDomain = this.perDomain[ data.domain ] ;
+
+	if ( perDomain && ( ( perDomain.minLevel !== undefined && level < perDomain.minLevel ) || ( perDomain.maxLevel !== undefined && level > perDomain.maxLevel ) ) ) {
+		return Promise.resolved ;
 	}
 
 	// Check if there is a 'code/meta' argument
@@ -751,6 +769,18 @@ Logfella.configSchema = {
 		defaultDomain: { type: 'string' , default: 'no-domain' } ,
 		overrideConsole: { type: 'boolean' , default: false } ,
 		monPeriod: { type: 'number' , default: null } ,
+		perDomain: {
+			type: 'strictObject' ,
+			default: {} ,
+			of: {
+				type: 'strictObject' ,
+				extraProperties: true ,
+				properties: {
+					minLevel: { in: defaultAvailableLevels , default: 0 } ,
+					maxLevel: { in: defaultAvailableLevels , default: 7 }
+				}
+			}
+		} ,
 		transports: {
 			type: 'array' ,
 			default: [] ,
@@ -2281,7 +2311,7 @@ CommonTransport.prototype.shutdown = function shutdown() {} ;
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -2365,7 +2395,7 @@ Promise.promisifyAnyNodeApi = ( api , suffix , multiSuffix , filter ) => {
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -2953,7 +2983,7 @@ Promise.race = Promise.Native.race.bind( Promise.Native ) ;
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -3609,7 +3639,7 @@ Promise.resolved = Promise.dummy = Promise.resolve() ;
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -3953,7 +3983,7 @@ Promise.variableRetry = ( asyncFn , thisBinding ) => {
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -4052,7 +4082,7 @@ Promise.resolveSafeTimeout = function resolveSafeTimeout( timeout , value ) {
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -4104,7 +4134,7 @@ Promise.parasite = () => {
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -4147,7 +4177,7 @@ require( './misc.js' ) ;
 /*
 	Seventh
 
-	Copyright (c) 2017 - 2018 Cédric Ronvel
+	Copyright (c) 2017 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -4229,16 +4259,135 @@ Promise.retry = ( options , asyncFn ) => {
 
 
 
+// Resolve once an event is fired
 Promise.onceEvent = ( emitter , eventName ) => {
-	return new Promise( resolve => emitter.once( eventName , arg => resolve( arg ) ) ) ;
+	return new Promise( resolve => emitter.once( eventName , resolve ) ) ;
 } ;
 
 
 
+// Resolve once an event is fired, resolve with an array of arguments
 Promise.onceEventAll = ( emitter , eventName ) => {
 	return new Promise( resolve => emitter.once( eventName , ( ... args ) => resolve( args ) ) ) ;
 } ;
 
+
+
+// Resolve once an event is fired, or reject on error
+Promise.onceEventOrError = ( emitter , eventName , excludeEvents ) => {
+	return new Promise( ( resolve , reject ) => {
+		var altRejects ;
+
+		// We care about removing listener, especially 'error', because if an error kick in after, it should throw because there is no listener
+		var resolve_ = arg => {
+			emitter.removeListener( 'error' , reject_ ) ;
+
+			if ( altRejects ) {
+				for ( let event in altRejects ) {
+					emitter.removeListener( event , altRejects[ event ] ) ;
+				}
+			}
+
+			resolve( arg ) ;
+		} ;
+
+		var reject_ = arg => {
+			emitter.removeListener( eventName , resolve_ ) ;
+
+			if ( altRejects ) {
+				for ( let event in altRejects ) {
+					emitter.removeListener( event , altRejects[ event ] ) ;
+				}
+			}
+
+			reject( arg ) ;
+		} ;
+
+		emitter.once( eventName , resolve_ ) ;
+		emitter.once( 'error' , reject_ ) ;
+
+		if ( excludeEvents ) {
+			if ( ! Array.isArray( excludeEvents ) ) { excludeEvents = [ excludeEvents ] ; }
+
+			altRejects = {} ;
+
+			excludeEvents.forEach( event => {
+				var altReject = ( ... args ) => {
+					emitter.removeListener( 'error' , reject_ ) ;
+					emitter.removeListener( eventName , resolve_ ) ;
+
+					var error = new Error( "Received an excluded event: " + event ) ;
+					error.event = event ;
+					error.eventArgs = args ;
+					reject( error ) ;
+				} ;
+
+				emitter.once( event , altReject ) ;
+
+				altRejects[ event ] = altReject ;
+			} ) ;
+		}
+	} ) ;
+} ;
+
+
+
+// Resolve once an event is fired, or reject on error, resolve with an array of arguments, reject with the first argument
+Promise.onceEventAllOrError = ( emitter , eventName , excludeEvents ) => {
+	return new Promise( ( resolve , reject ) => {
+		var altRejects ;
+
+		// We care about removing listener, especially 'error', because if an error kick in after, it should throw because there is no listener
+		var resolve_ = ( ... args ) => {
+			emitter.removeListener( 'error' , reject_ ) ;
+
+			if ( altRejects ) {
+				for ( let event in altRejects ) {
+					emitter.removeListener( event , altRejects[ event ] ) ;
+				}
+			}
+
+			resolve( args ) ;
+		} ;
+
+		var reject_ = arg => {
+			emitter.removeListener( eventName , resolve_ ) ;
+
+			if ( altRejects ) {
+				for ( let event in altRejects ) {
+					emitter.removeListener( event , altRejects[ event ] ) ;
+				}
+			}
+
+			reject( arg ) ;
+		} ;
+
+		emitter.once( eventName , resolve_ ) ;
+		emitter.once( 'error' , reject_ ) ;
+
+		if ( excludeEvents ) {
+			if ( ! Array.isArray( excludeEvents ) ) { excludeEvents = [ excludeEvents ] ; }
+
+			altRejects = {} ;
+
+			excludeEvents.forEach( event => {
+				var altReject = ( ... args ) => {
+					emitter.removeListener( 'error' , reject_ ) ;
+					emitter.removeListener( eventName , resolve_ ) ;
+
+					var error = new Error( "Received an excluded event: " + event ) ;
+					error.event = event ;
+					error.eventArgs = args ;
+					reject( error ) ;
+				} ;
+
+				emitter.once( event , altReject ) ;
+
+				altRejects[ event ] = altReject ;
+			} ) ;
+		}
+	} ) ;
+} ;
 
 
 },{"./seventh.js":14}],16:[function(require,module,exports){
@@ -4544,7 +4693,6 @@ exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
 
 
 
-// Load modules
 var inspect = require( './inspect.js' ).inspect ;
 var inspectError = require( './inspect.js' ).inspectError ;
 var escape = require( './escape.js' ) ;
@@ -4555,6 +4703,7 @@ var ansi = require( './ansi.js' ) ;
 /*
 	%%		a single %
 	%s		string
+	%S		string, interpret ^ formatting
 	%r		raw string: without sanitizer
 	%f		float
 	%d	%i	integer
@@ -4758,6 +4907,22 @@ modes.s = arg => {
 
 modes.r = arg => modes.s( arg ) ;
 modes.r.noSanitize = true ;
+
+
+
+// string, interpret ^ formatting
+modes.S = ( arg , modeArg , options ) => {
+	// We do the sanitizing part on our own
+	var interpret = str => exports.markupMethod.call( options , options.argumentSanitizer ? options.argumentSanitizer( str ) : str ) ;
+
+	if ( typeof arg === 'string' ) { return interpret( arg ) ; }
+	if ( arg === null || arg === undefined || arg === true || arg === false ) { return '(' + arg + ')' ; }
+	if ( typeof arg === 'number' ) { return '' + arg ; }
+	if ( typeof arg.toString === 'function' ) { return interpret( arg.toString() ) ; }
+	return interpret( '(' + arg + ')' ) ;
+} ;
+
+modes.S.noSanitize = true ;
 
 
 

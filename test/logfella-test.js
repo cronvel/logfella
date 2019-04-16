@@ -48,8 +48,7 @@ var Promise = require( 'seventh' ) ;
 describe( "Logfella" , function() {
 	
 	it( "single test" , function() {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		
 		logger.configure( {
 			minLevel: 'trace' ,
@@ -66,8 +65,7 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "color, no-color" , function() {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		
 		logger.configure( {
 			minLevel: 'trace' ,
@@ -83,8 +81,7 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "including a code and meta" , function() {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		
 		logger.configure( {
 			minLevel: 'trace' ,
@@ -102,8 +99,7 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "misc tests" , () => {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.configure( {
@@ -137,7 +133,6 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "full setup" , () => {
-		
 		var logger = Logfella.create( {
 			minLevel: 'trace' ,
 			defaultDomain: 'default-domain' ,
@@ -169,7 +164,6 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "full setup on global" , () => {
-		
 		var logger = Logfella.global ;
 		
 		logger.configure( {
@@ -203,8 +197,7 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "errors" , function() {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.configure( {
@@ -217,8 +210,7 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "variable inspection" , function() {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		var teaTimeLogger = logger.use( 'tea-time' ) ;
 		
 		logger.configure( {
@@ -231,8 +223,7 @@ describe( "Logfella" , function() {
 	} ) ;
 	
 	it( "format color" , function() {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		
 		logger.configure( {
 			minLevel: 'trace' ,
@@ -245,9 +236,8 @@ describe( "Logfella" , function() {
 		logger.error( null , 'some error %E' , new Error( 'Something bad happens' ) ) ;
 	} ) ;
 	
-	it( "new hdebug" , function() {
-		
-		var logger = Logfella.create() ;
+	it( "new hdebug for hot debugging" , function() {
+		var logger = new Logfella() ;
 		
 		logger.configure( {
 			minLevel: 'trace' ,
@@ -255,12 +245,31 @@ describe( "Logfella" , function() {
 		} ) ;
 		
 		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
-		logger.hdebug( null , 'H Debug!' ) ;
+		logger.hdebug( null , 'Hot Debug!' ) ;
+	} ) ;
+	
+	it( "per domain" , function() {
+		var logger = new Logfella() ;
+		
+		logger.configure( {
+			minLevel: 'trace' ,
+			perDomain: {
+				server: { minLevel: 'info' , maxLevel: 'error' }
+			}
+		} ) ;
+		
+		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		
+		logger.debug( null , 'some debug' ) ;
+		logger.debug( 'server' , 'some debug' ) ;
+		logger.info( null , 'something happens' ) ;
+		logger.info( 'server' , 'something happens' ) ;
+		logger.fatal( null , 'fatal error' ) ;
+		logger.fatal( 'server' , 'fatal error' ) ;
 	} ) ;
 	
 	it( "monitoring" , function() {
-		
-		var logger = Logfella.create() ;
+		var logger = new Logfella() ;
 		
 		logger.configure( {
 			minLevel: 'trace' ,
