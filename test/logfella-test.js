@@ -34,8 +34,9 @@ if ( process.browser ) { return ; }
 
 
 
-var Logfella = require( '../lib/Logfella.js' ) ;
-var Promise = require( 'seventh' ) ;
+const Logfella = require( '../lib/Logfella.js' ) ;
+const timeFormatter = require( '../lib/timeFormatter.js' ) ;
+const Promise = require( 'seventh' ) ;
 
 
 
@@ -218,8 +219,15 @@ describe( "Logfella" , function() {
 			defaultDomain: 'default-domain'
 		} ) ;
 		
-		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		//logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'unit' , { minLevel: 'trace' } ) ;
+		var dt = timeFormatter.dateTime( new Date() ) ;
+		
 		logger.debug( null , { one: 1 , two: 'TWO!' } ) ;
+
+		expect( logger.getEntries() ).to.equal( [
+			'[DEBUG] ' + dt + ' <default-domain> -- <Object> <object> {\n    one: 1 <number>\n    two: "TWO!" <string>(4)\n}\n'
+		] ) ;
 	} ) ;
 	
 	it( "format color" , function() {
@@ -244,28 +252,46 @@ describe( "Logfella" , function() {
 			defaultDomain: 'default-domain'
 		} ) ;
 		
-		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		//logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'unit' , { minLevel: 'trace' } ) ;
+		var dt = timeFormatter.dateTime( new Date() ) ;
+		
 		logger.hdebug( null , 'Hot Debug!' ) ;
+
+		expect( logger.getEntries() ).to.equal( [
+			'[HDBUG] ' + dt + ' <default-domain> -- Hot Debug!'
+		] ) ;
 	} ) ;
 	
 	it( "per domain" , function() {
 		var logger = new Logfella() ;
 		
 		logger.configure( {
-			minLevel: 'trace' ,
+			minLevel: 'debug' ,
 			perDomain: {
 				server: { minLevel: 'info' , maxLevel: 'error' }
 			}
 		} ) ;
 		
-		logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		//logger.addTransport( 'console' , { minLevel: 'trace' , output: process.stderr } ) ;
+		logger.addTransport( 'unit' , { minLevel: 'trace' } ) ;
+		var dt = timeFormatter.dateTime( new Date() ) ;
 		
+		logger.trace( null , 'some debug' ) ;
+		logger.trace( 'server' , 'some debug' ) ;
 		logger.debug( null , 'some debug' ) ;
 		logger.debug( 'server' , 'some debug' ) ;
 		logger.info( null , 'something happens' ) ;
 		logger.info( 'server' , 'something happens' ) ;
 		logger.fatal( null , 'fatal error' ) ;
 		logger.fatal( 'server' , 'fatal error' ) ;
+		
+		expect( logger.getEntries() ).to.equal( [
+			'[DEBUG] ' + dt + ' <no-domain> -- some debug',
+			'[INFO.] ' + dt + ' <no-domain> -- something happens',
+			'[INFO.] ' + dt + ' <server> -- something happens',
+			'[FATAL] ' + dt + ' <no-domain> -- fatal error'
+		] ) ;
 	} ) ;
 	
 	it( "monitoring" , function() {

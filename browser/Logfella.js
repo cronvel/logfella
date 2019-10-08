@@ -29,8 +29,8 @@
 
 
 
-var CommonTransport = require( 'logfella-common-transport' ) ;
-var Promise = require( 'seventh' ) ;
+const CommonTransport = require( 'logfella-common-transport' ) ;
+const Promise = require( 'seventh' ) ;
 
 
 
@@ -51,9 +51,9 @@ BrowserConsoleTransport.prototype.constructor = BrowserConsoleTransport ;
 
 
 
-BrowserConsoleTransport.prototype.transport = function transport( data , cache ) {
+BrowserConsoleTransport.prototype.transport = function( data , cache ) {
 	console.log( this.messageFormatter( data , cache ) + '\n' ) ;
-	return Promise.dummy ;
+	return Promise.resolved ;
 } ;
 
 
@@ -89,10 +89,10 @@ BrowserConsoleTransport.prototype.transport = function transport( data , cache )
 
 
 
-var Promise = require( 'seventh' ) ;
-var string = require( 'string-kit' ) ;
-var treeOps = require( 'kung-fig-tree-ops' ) ;
-var CommonTransport = require( 'logfella-common-transport' ) ;
+const Promise = require( 'seventh' ) ;
+const string = require( 'string-kit' ) ;
+const treeOps = require( 'kung-fig-tree-ops' ) ;
+const CommonTransport = require( 'logfella-common-transport' ) ;
 
 var path , os ;
 var browserPageTime ;
@@ -113,7 +113,7 @@ else {
 
 function Logfella( config ) {
 	this.root = this ;
-	this.perDomain = {} ;
+	this.perDomain = null ;
 	this.logTransports = [] ;
 	this.monTransports = [] ;
 	this.app = null ;
@@ -169,7 +169,7 @@ var defaultLevelHash = {} ,
 	var createShortHand = ( level , name_ ) => {
 		Logfella.prototype[ name_ ] = function( ... args ) {
 			// Early exit, if possible
-			if ( level < this.minLevel || level > this.maxLevel ) { return Promise.resolved ; }
+			if ( ! this.perDomain && ( level < this.minLevel || level > this.maxLevel ) ) { return Promise.resolved ; }
 			return this.log( level , ... args ) ;
 		} ;
 	} ;
@@ -185,7 +185,7 @@ var defaultLevelHash = {} ,
 
 
 
-// Check if the current level is enable
+// Check if the current level is enable, userland
 Logfella.prototype.checkLevel = function( level ) {
 	if ( typeof level === 'string' ) {
 		level = this.levelHash[ level ] ;
@@ -292,10 +292,15 @@ Logfella.prototype.configure = function( config ) {
 
 
 
+Logfella.prototype.disablePerDomainSettings = function() {
+	this.perDomain = null ;
+} ;
+
+
+
 Logfella.prototype.setDomainConfig = function( domain , config ) {
-	if ( ! this.perDomain[ domain ] ) {
-		this.perDomain[ domain ] = {} ;
-	}
+	if ( ! this.perDomain ) { this.perDomain = {} ; }
+	if ( ! this.perDomain[ domain ] ) { this.perDomain[ domain ] = {} ; }
 
 	if ( config.minLevel ) {
 		this.perDomain[ domain ].minLevel = typeof config.minLevel === 'string' ?
@@ -314,45 +319,44 @@ Logfella.prototype.setDomainConfig = function( domain , config ) {
 
 // log( level , domain , [code|meta] , formatedMessage , [arg1] , [arg2] , ... )
 Logfella.prototype.log = function( level , ... args ) {
-	var formatCount , formatedMessage , formatedMessageIndex , data , type , o , monModifier , perDomain , cache = null ;
+	var formatCount , formatedMessage , formatedMessageIndex , type , o , monModifier , perDomain ,
+		levelName , domain , meta , code , messageData , isFormat , stack ,
+		cache = null ;
 
-	// Level management should come first for early exit
 	if ( typeof level === 'number' ) {
-		// Fast exit
-		if ( level < this.minLevel || level > this.maxLevel || level >= this.levelArray.length ) { return Promise.resolved ; }
-
-		data = {
-			level: level ,
-			levelName: this.levelArray[ level ]
-		} ;
+		if ( level >= this.levelArray.length ) { return Promise.resolved ; }
+		levelName = this.levelArray[ level ] ;
 	}
 	else if ( typeof level === 'string' ) {
-		data = {
-			levelName: level ,
-			level: this.levelHash[ level ]
-		} ;
-
-		// Fast exit
-		if ( data.level === undefined || data.level < this.minLevel || data.level > this.maxLevel ) { return Promise.resolved ; }
+		levelName = level ;
+		level = this.levelHash[ levelName ] ;
+		if ( level === undefined ) { return Promise.resolved ; }
 	}
 	else {
 		return Promise.resolved ;
 	}
 
-
 	if ( this.domain ) {
-		data.domain = this.domain ;
+		domain = this.domain ;
 		formatedMessageIndex = 0 ;
 	}
 	else {
-		data.domain = typeof args[ 0 ] === 'string' ? args[ 0 ] : this.defaultDomain ;
+		domain = typeof args[ 0 ] === 'string' ? args[ 0 ] : this.defaultDomain ;
 		formatedMessageIndex = 1 ;
 	}
 
-	// Per-domain filtering
-	perDomain = this.perDomain[ data.domain ] ;
+	// Level management should come first for early exit
 
-	if ( perDomain && ( ( perDomain.minLevel !== undefined && level < perDomain.minLevel ) || ( perDomain.maxLevel !== undefined && level > perDomain.maxLevel ) ) ) {
+	// Per-domain filtering?
+	if ( this.perDomain && ( perDomain = this.perDomain[ domain ] ) ) {
+		if (
+			level < ( perDomain.minLevel !== undefined ? perDomain.minLevel : this.minLevel ) ||
+			level > ( perDomain.maxLevel !== undefined ? perDomain.maxLevel : this.maxLevel )
+		) {
+			return Promise.resolved ;
+		}
+	}
+	else if ( level < this.minLevel || level > this.maxLevel ) {
 		return Promise.resolved ;
 	}
 
@@ -362,38 +366,38 @@ Logfella.prototype.log = function( level , ... args ) {
 
 		if ( args[ formatedMessageIndex ] && type === 'object' ) {
 			// This is a 'meta' argument
-			data.meta = args[ formatedMessageIndex ] ;
+			meta = args[ formatedMessageIndex ] ;
 
 			// Extract the 'code' property, if any...
-			if ( 'code' in data.meta ) {
-				data.code = data.meta.code ;
-				delete data.meta.code ;
+			if ( 'code' in meta ) {
+				code = meta.code ;
+				delete meta.code ;
 			}
 
 			// Extract the 'mon' property, if any...
-			if ( 'mon' in data.meta ) {
-				monModifier = data.meta.mon ;
-				delete data.meta.mon ;
+			if ( 'mon' in meta ) {
+				monModifier = meta.mon ;
+				delete meta.mon ;
 			}
 
 			formatedMessageIndex ++ ;
 		}
 		else if ( type === 'number' ) {
 			// This is a 'code' argument
-			data.code = args[ formatedMessageIndex ] ;
+			code = args[ formatedMessageIndex ] ;
 			formatedMessageIndex ++ ;
 		}
 		else if ( type === 'string' && args[ formatedMessageIndex ].indexOf( '%' ) === -1 ) {
 			// This is a 'code' argument
-			data.code = args[ formatedMessageIndex ] ;
+			code = args[ formatedMessageIndex ] ;
 			formatedMessageIndex ++ ;
 		}
 
 	}
 
-	if ( data.level >= 4 ) {
+	if ( level >= 4 ) {
 		// The user may override and fucked up that, so we ensure we deal with numbers
-		if ( data.level >= 5 ) { this.mon.errors = + this.mon.errors + 1 || 1 ; }
+		if ( level >= 5 ) { this.mon.errors = + this.mon.errors + 1 || 1 ; }
 		else { this.mon.warnings = + this.mon.warnings + 1 || 1 ; }
 	}
 
@@ -415,18 +419,18 @@ Logfella.prototype.log = function( level , ... args ) {
 		formatCount = string.format.count( formatedMessage ) ;	// Count formated arguments
 
 		if ( ! formatCount ) {
-			data.messageData = formatedMessage ;
+			messageData = formatedMessage ;
 		}
 		else {
-			data.messageData = args.slice( formatedMessageIndex , formatedMessageIndex + 1 + formatCount ) ;
-			data.isFormat = true ;
+			messageData = args.slice( formatedMessageIndex , formatedMessageIndex + 1 + formatCount ) ;
+			isFormat = true ;
 		}
 	}
 	else {
-		data.messageData = formatedMessage ;
+		messageData = formatedMessage ;
 	}
 
-	if ( data.level === 0 && ! data.stack ) {
+	if ( level === 0 ) {
 		// Add a stack trace for 'trace' level
 		if ( process.browser ) {
 			o = new Error() ;
@@ -445,15 +449,26 @@ Logfella.prototype.log = function( level , ... args ) {
 			}
 		}
 
-		data.stack = o.stack ;
+		stack = o.stack ;
 	}
 
-	data.app = this.app ;
-	data.time = new Date() ;
-	data.uptime = process.uptime() ;
-	data.pid = this.pid ;
-	data.hostname = this.hostname ;
-	data.messageCache = {} ;
+	var data = {
+		level ,
+		levelName ,
+		domain ,
+		meta ,
+		code ,
+		messageData ,
+		isFormat ,
+		stack ,
+		app: this.app ,
+		time: new Date() ,
+		uptime: process.uptime() ,
+		pid: this.pid ,
+		hostname: this.hostname ,
+		messageCache: {}
+	} ;
+
 
 	// Call the hook, if any
 	if ( this.hook ) { this.hook( data ) ; }
@@ -469,7 +484,7 @@ Logfella.prototype.log = function( level , ... args ) {
 		return eachTransport( this.logTransports[ 0 ] ) ;
 	}
 
-	// Only active cache if there are more than one tranport
+	// Only active cache if there are more than one transport
 	cache = {} ;
 
 	return Promise.all( this.logTransports.map( eachTransport ) ) ;
@@ -556,7 +571,7 @@ Logfella.prototype.monFrame = function() {
 		return this.monTransports[ 0 ].transport( data , cache ) ;
 	}
 
-	// Only active cache if there are more than one tranport
+	// Only active cache if there are more than one transport
 	cache = {} ;
 
 	return Promise.all( this.monTransports.map( transport => transport.transport( data , cache ) ) ) ;
@@ -788,7 +803,7 @@ Logfella.configSchema = {
 		monPeriod: { type: 'number' , default: null } ,
 		perDomain: {
 			type: 'strictObject' ,
-			default: {} ,
+			default: null ,
 			of: {
 				type: 'strictObject' ,
 				extraProperties: true ,
@@ -868,8 +883,8 @@ else {
 
 
 
-var string = require( 'string-kit' ) ;
-var tree = require( 'tree-kit' ) ;
+const string = require( 'string-kit' ) ;
+const tree = require( 'tree-kit' ) ;
 
 
 
@@ -963,7 +978,7 @@ function hashSymbol( value ) {
 
 
 // The default message formater
-exports.text = function text( data , cache ) {
+exports.text = function( data , cache ) {
 	var cacheKey , metaKeys , first ,
 		levelString = '' , timeString = '' , domainString = '' , idString = '' ,
 		codeString = '' , metaString = '' , messageString = '' , stackString = '' ,
@@ -1144,7 +1159,7 @@ exports.text = function text( data , cache ) {
 			'-- ' ;
 	}
 
-	if ( 'stack' in data ) {
+	if ( data.stack !== undefined ) {
 		stackString = '\n' + string.inspectStack( { style: this.color ? 'color' : 'none' } , data.stack ) ;
 	}
 
@@ -1159,7 +1174,7 @@ exports.text = function text( data , cache ) {
 
 
 // The JSON message formater
-exports.json = function json( data , cache ) {
+exports.json = function( data , cache ) {
 	var cacheKey , str ;
 
 	if ( cache ) {
@@ -1231,28 +1246,29 @@ exports.json = function json( data , cache ) {
 function leadingZero( num ) { return num >= 10 ? num : '0' + num ; }
 
 // Full time formater, with date & time in ms
-exports.dateTimeMs = function dateTimeMs( timeObject ) {
+exports.dateTimeMs = function( timeObject ) {
 	return timeObject.getUTCFullYear() + '-' + leadingZero( timeObject.getUTCMonth() + 1 ) + '-' + leadingZero( timeObject.getUTCDate() ) +
 		' ' + leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) +
 		'.' + ( timeObject.getUTCMilliseconds() / 1000 ).toFixed( 3 ).slice( 2 , 5 ) ;
 } ;
 
 // Date & time in s
-exports.dateTime = function dateTime( timeObject ) {
+exports.dateTime = function( timeObject ) {
 	return timeObject.getUTCFullYear() + '-' + leadingZero( timeObject.getUTCMonth() + 1 ) + '-' + leadingZero( timeObject.getUTCDate() ) +
 		' ' + leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) ;
 } ;
 
 // Time in ms
-exports.timeMs = function timeMs( timeObject ) {
+exports.timeMs = function( timeObject ) {
 	return leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) +
 		'.' + ( timeObject.getUTCMilliseconds() / 1000 ).toFixed( 3 ).slice( 2 , 5 ) ;
 } ;
 
 // Time in s
-exports.time = function time( timeObject ) {
+exports.time = function( timeObject ) {
 	return leadingZero( timeObject.getUTCHours() ) + ':' + leadingZero( timeObject.getUTCMinutes() ) + ':' + leadingZero( timeObject.getUTCSeconds() ) ;
 } ;
+
 
 },{}],5:[function(require,module,exports){
 /*
@@ -2385,19 +2401,19 @@ Promise.promisifyNodeApi = ( api , suffix , multiSuffix , filter , anything ) =>
 
 		return filter( key , api ) ;
 	} )
-	.forEach( key => {
-		const targetKey = key + suffix ;
-		const multiTargetKey = key + multiSuffix ;
+		.forEach( key => {
+			const targetKey = key + suffix ;
+			const multiTargetKey = key + multiSuffix ;
 
-		// Do nothing if it already exists
-		if ( ! api[ targetKey ] ) {
-			api[ targetKey ] = Promise.promisify( api[ key ] , api ) ;
-		}
+			// Do nothing if it already exists
+			if ( ! api[ targetKey ] ) {
+				api[ targetKey ] = Promise.promisify( api[ key ] , api ) ;
+			}
 
-		if ( ! api[ multiTargetKey ] ) {
-			api[ multiTargetKey ] = Promise.promisifyAll( api[ key ] , api ) ;
-		}
-	} ) ;
+			if ( ! api[ multiTargetKey ] ) {
+				api[ multiTargetKey ] = Promise.promisifyAll( api[ key ] , api ) ;
+			}
+		} ) ;
 } ;
 
 
@@ -2450,7 +2466,7 @@ function noop() {}
 
 
 
-Promise.all = function all( iterable ) {
+Promise.all = ( iterable ) => {
 	var index = -1 , settled = false ,
 		count = 0 , length = Infinity ,
 		value , values = [] ,
@@ -2466,24 +2482,24 @@ Promise.all = function all( iterable ) {
 			const promiseIndex = index ;
 
 			Promise.resolve( value )
-			.then(
-				value_ => {
-					if ( settled ) { return ; }
+				.then(
+					value_ => {
+						if ( settled ) { return ; }
 
-					values[ promiseIndex ] = value_ ;
-					count ++ ;
+						values[ promiseIndex ] = value_ ;
+						count ++ ;
 
-					if ( count >= length ) {
+						if ( count >= length ) {
+							settled = true ;
+							allPromise._resolveValue( values ) ;
+						}
+					} ,
+					error => {
+						if ( settled ) { return ; }
 						settled = true ;
-						allPromise._resolveValue( values ) ;
+						allPromise.reject( error ) ;
 					}
-				} ,
-				error => {
-					if ( settled ) { return ; }
-					settled = true ;
-					allPromise.reject( error ) ;
-				}
-			) ;
+				) ;
 		} )() ;
 	}
 
@@ -2500,7 +2516,7 @@ Promise.all = function all( iterable ) {
 
 // Maybe faster, but can't find any reasonable grounds for that ATM
 //Promise.all =
-Promise._allArray = function _allArray( iterable ) {
+Promise._allArray = ( iterable ) => {
 	var length = iterable.length ;
 
 	if ( ! length ) { Promise._resolveValue( [] ) ; }
@@ -2524,7 +2540,7 @@ Promise._allArray = function _allArray( iterable ) {
 
 
 // internal for allArray
-Promise._allArrayOne = function _allArrayOne( value , index , runtime ) {
+Promise._allArrayOne = ( value , index , runtime ) => {
 	Promise._bareThen( value ,
 		value_ => {
 			if ( runtime.settled ) { return ; }
@@ -2548,7 +2564,7 @@ Promise._allArrayOne = function _allArrayOne( value , index , runtime ) {
 
 // Promise.all() with an iterator
 Promise.every =
-Promise.map = function map( iterable , iterator ) {
+Promise.map = ( iterable , iterator ) => {
 	var index = -1 , settled = false ,
 		count = 0 , length = Infinity ,
 		value , values = [] ,
@@ -2564,28 +2580,28 @@ Promise.map = function map( iterable , iterator ) {
 			const promiseIndex = index ;
 
 			Promise.resolve( value )
-			.then( value_ => {
-				if ( settled ) { return ; }
-				return iterator( value_ , promiseIndex ) ;
-			} )
-			.then(
-				value_ => {
+				.then( value_ => {
 					if ( settled ) { return ; }
+					return iterator( value_ , promiseIndex ) ;
+				} )
+				.then(
+					value_ => {
+						if ( settled ) { return ; }
 
-					values[ promiseIndex ] = value_ ;
-					count ++ ;
+						values[ promiseIndex ] = value_ ;
+						count ++ ;
 
-					if ( count >= length ) {
+						if ( count >= length ) {
+							settled = true ;
+							allPromise._resolveValue( values ) ;
+						}
+					} ,
+					error => {
+						if ( settled ) { return ; }
 						settled = true ;
-						allPromise._resolveValue( values ) ;
+						allPromise.reject( error ) ;
 					}
-				} ,
-				error => {
-					if ( settled ) { return ; }
-					settled = true ;
-					allPromise.reject( error ) ;
-				}
-			) ;
+				) ;
 		} )() ;
 	}
 
@@ -2605,7 +2621,7 @@ Promise.map = function map( iterable , iterator ) {
 	Therefore, it resolves to the first resolving promise OR reject if all promises are rejected
 	with, as a reason, the array of all promise rejection reasons.
 */
-Promise.any = function any( iterable ) {
+Promise.any = ( iterable ) => {
 	var index = -1 , settled = false ,
 		count = 0 , length = Infinity ,
 		value ,
@@ -2622,25 +2638,25 @@ Promise.any = function any( iterable ) {
 			const promiseIndex = index ;
 
 			Promise.resolve( value )
-			.then(
-				value_ => {
-					if ( settled ) { return ; }
+				.then(
+					value_ => {
+						if ( settled ) { return ; }
 
-					settled = true ;
-					anyPromise._resolveValue( value_ ) ;
-				} ,
-				error => {
-					if ( settled ) { return ; }
-
-					errors[ promiseIndex ] = error ;
-					count ++ ;
-
-					if ( count >= length ) {
 						settled = true ;
-						anyPromise.reject( errors ) ;
+						anyPromise._resolveValue( value_ ) ;
+					} ,
+					error => {
+						if ( settled ) { return ; }
+
+						errors[ promiseIndex ] = error ;
+						count ++ ;
+
+						if ( count >= length ) {
+							settled = true ;
+							anyPromise.reject( errors ) ;
+						}
 					}
-				}
-			) ;
+				) ;
 		} )() ;
 	}
 
@@ -2656,7 +2672,7 @@ Promise.any = function any( iterable ) {
 
 
 // Like Promise.any() but with an iterator
-Promise.some = function some( iterable , iterator ) {
+Promise.some = ( iterable , iterator ) => {
 	var index = -1 , settled = false ,
 		count = 0 , length = Infinity ,
 		value ,
@@ -2673,29 +2689,29 @@ Promise.some = function some( iterable , iterator ) {
 			const promiseIndex = index ;
 
 			Promise.resolve( value )
-			.then( value_ => {
-				if ( settled ) { return ; }
-				return iterator( value_ , promiseIndex ) ;
-			} )
-			.then(
-				value_ => {
+				.then( value_ => {
 					if ( settled ) { return ; }
+					return iterator( value_ , promiseIndex ) ;
+				} )
+				.then(
+					value_ => {
+						if ( settled ) { return ; }
 
-					settled = true ;
-					anyPromise._resolveValue( value_ ) ;
-				} ,
-				error => {
-					if ( settled ) { return ; }
-
-					errors[ promiseIndex ] = error ;
-					count ++ ;
-
-					if ( count >= length ) {
 						settled = true ;
-						anyPromise.reject( errors ) ;
+						anyPromise._resolveValue( value_ ) ;
+					} ,
+					error => {
+						if ( settled ) { return ; }
+
+						errors[ promiseIndex ] = error ;
+						count ++ ;
+
+						if ( count >= length ) {
+							settled = true ;
+							anyPromise.reject( errors ) ;
+						}
 					}
-				}
-			) ;
+				) ;
 		} )() ;
 	}
 
@@ -2716,7 +2732,7 @@ Promise.some = function some( iterable , iterator ) {
 	or falsy if the element should be filtered out.
 	Any rejection reject the whole promise.
 */
-Promise.filter = function filter( iterable , iterator ) {
+Promise.filter = ( iterable , iterator ) => {
 	var index = -1 , settled = false ,
 		count = 0 , length = Infinity ,
 		value , values = [] ,
@@ -2732,31 +2748,31 @@ Promise.filter = function filter( iterable , iterator ) {
 			const promiseIndex = index ;
 
 			Promise.resolve( value )
-			.then( value_ => {
-				if ( settled ) { return ; }
-				values[ promiseIndex ] = value_ ;
-				return iterator( value_ , promiseIndex ) ;
-			} )
-			.then(
-				iteratorValue => {
+				.then( value_ => {
 					if ( settled ) { return ; }
+					values[ promiseIndex ] = value_ ;
+					return iterator( value_ , promiseIndex ) ;
+				} )
+				.then(
+					iteratorValue => {
+						if ( settled ) { return ; }
 
-					count ++ ;
+						count ++ ;
 
-					if ( ! iteratorValue ) { values[ promiseIndex ] = HOLE ; }
+						if ( ! iteratorValue ) { values[ promiseIndex ] = HOLE ; }
 
-					if ( count >= length ) {
+						if ( count >= length ) {
+							settled = true ;
+							values = values.filter( e => e !== HOLE ) ;
+							filterPromise._resolveValue( values ) ;
+						}
+					} ,
+					error => {
+						if ( settled ) { return ; }
 						settled = true ;
-						values = values.filter( e => e !== HOLE ) ;
-						filterPromise._resolveValue( values ) ;
+						filterPromise.reject( error ) ;
 					}
-				} ,
-				error => {
-					if ( settled ) { return ; }
-					settled = true ;
-					filterPromise.reject( error ) ;
-				}
-			) ;
+				) ;
 		} )() ;
 	}
 
@@ -2777,8 +2793,9 @@ Promise.filter = function filter( iterable , iterator ) {
 
 
 // forEach performs reduce as well, if a third argument is supplied
+// Force a function statement because we are using arguments.length, so we can support accumulator equals to undefined
 Promise.foreach =
-Promise.forEach = function forEach( iterable , iterator , accumulator ) {
+Promise.forEach = function( iterable , iterator , accumulator ) {
 	var index = -1 ,
 		isReduce = arguments.length >= 3 ,
 		it = iterable[Symbol.iterator]() ,
@@ -2831,7 +2848,7 @@ Promise.forEach = function forEach( iterable , iterator , accumulator ) {
 
 
 
-Promise.reduce = function reduce( iterable , iterator , accumulator ) {
+Promise.reduce = ( iterable , iterator , accumulator ) => {
 	// Force 3 arguments
 	return Promise.forEach( iterable , iterator , accumulator ) ;
 } ;
@@ -2842,7 +2859,7 @@ Promise.reduce = function reduce( iterable , iterator , accumulator ) {
 	Same than map, but iterate over an object and produce an object.
 	Think of it as a kind of Object#map() (which of course does not exist).
 */
-Promise.mapObject = function mapObject( inputObject , iterator ) {
+Promise.mapObject = ( inputObject , iterator ) => {
 	var settled = false ,
 		count = 0 ,
 		i , key , keys = Object.keys( inputObject ) ,
@@ -2859,28 +2876,28 @@ Promise.mapObject = function mapObject( inputObject , iterator ) {
 			const promiseKey = key ;
 
 			Promise.resolve( value )
-			.then( value_ => {
-				if ( settled ) { return ; }
-				return iterator( value_ , promiseKey ) ;
-			} )
-			.then(
-				value_ => {
+				.then( value_ => {
 					if ( settled ) { return ; }
+					return iterator( value_ , promiseKey ) ;
+				} )
+				.then(
+					value_ => {
+						if ( settled ) { return ; }
 
-					outputObject[ promiseKey ] = value_ ;
-					count ++ ;
+						outputObject[ promiseKey ] = value_ ;
+						count ++ ;
 
-					if ( count >= length ) {
+						if ( count >= length ) {
+							settled = true ;
+							mapPromise._resolveValue( outputObject ) ;
+						}
+					} ,
+					error => {
+						if ( settled ) { return ; }
 						settled = true ;
-						mapPromise._resolveValue( outputObject ) ;
+						mapPromise.reject( error ) ;
 					}
-				} ,
-				error => {
-					if ( settled ) { return ; }
-					settled = true ;
-					mapPromise.reject( error ) ;
-				}
-			) ;
+				) ;
 		} )() ;
 	}
 
@@ -2894,7 +2911,7 @@ Promise.mapObject = function mapObject( inputObject , iterator ) {
 
 
 // Like map, but with a concurrency limit
-Promise.concurrent = function concurrent( limit , iterable , iterator ) {
+Promise.concurrent = ( limit , iterable , iterator ) => {
 	var index = -1 , settled = false ,
 		running = 0 ,
 		count = 0 , length = Infinity ,
@@ -2937,37 +2954,37 @@ Promise.concurrent = function concurrent( limit , iterable , iterator ) {
 				//console.log( "Launch" , promiseIndex ) ;
 
 				Promise.resolve( value )
-				.then( value_ => {
-					if ( settled ) { return ; }
-					return iterator( value_ , promiseIndex ) ;
-				} )
-				.then(
-					value_ => {
+					.then( value_ => {
+						if ( settled ) { return ; }
+						return iterator( value_ , promiseIndex ) ;
+					} )
+					.then(
+						value_ => {
 						//console.log( "Done" , promiseIndex , value_ ) ;
-						if ( settled ) { return ; }
+							if ( settled ) { return ; }
 
-						values[ promiseIndex ] = value_ ;
-						count ++ ;
-						running -- ;
+							values[ promiseIndex ] = value_ ;
+							count ++ ;
+							running -- ;
 
-						//console.log( "count/length" , count , length ) ;
-						if ( count >= length ) {
+							//console.log( "count/length" , count , length ) ;
+							if ( count >= length ) {
+								settled = true ;
+								concurrentPromise._resolveValue( values ) ;
+								return ;
+							}
+
+							if ( running < limit ) {
+								runBatch() ;
+								return ;
+							}
+						} ,
+						error => {
+							if ( settled ) { return ; }
 							settled = true ;
-							concurrentPromise._resolveValue( values ) ;
-							return ;
+							concurrentPromise.reject( error ) ;
 						}
-
-						if ( running < limit ) {
-							runBatch() ;
-							return ;
-						}
-					} ,
-					error => {
-						if ( settled ) { return ; }
-						settled = true ;
-						concurrentPromise.reject( error ) ;
-					}
-				) ;
+					) ;
 			} )() ;
 		}
 	} ;
@@ -2984,15 +3001,36 @@ Promise.concurrent = function concurrent( limit , iterable , iterator ) {
 
 
 /*
-	The standard method is totally stoOpid, since it rejects if the first settled promise rejects,
-	it also hang forever on empty array.
-	The standard guys should have been drunk.
-	I don't want to code such a brain-fucking method.
-
-	Use Promise.any() or Promise.filter()
+	Like native Promise.race(), it is hanging forever if the array is empty.
+	It resolves or rejects to the first resolved/rejected promise.
 */
-Promise.race = Promise.Native.race.bind( Promise.Native ) ;
+Promise.race = ( iterable ) => {
+	var settled = false ,
+		value ,
+		racePromise = new Promise() ;
 
+	for ( value of iterable ) {
+		if ( settled ) { break ; }
+
+		Promise.resolve( value )
+			.then(
+				value_ => {
+					if ( settled ) { return ; }
+
+					settled = true ;
+					racePromise._resolveValue( value_ ) ;
+				} ,
+				error => {
+					if ( settled ) { return ; }
+
+					settled = true ;
+					racePromise.reject( error ) ;
+				}
+			) ;
+	}
+
+	return racePromise ;
+} ;
 
 
 },{"./seventh.js":14}],10:[function(require,module,exports){
@@ -3077,7 +3115,7 @@ Promise.warnUnhandledRejection = true ;
 
 
 
-Promise.prototype._exec = function _exec() {
+Promise.prototype._exec = function() {
 	this._then = Promise._pendingThen ;
 
 	try {
@@ -3102,7 +3140,7 @@ Promise.prototype._exec = function _exec() {
 
 
 
-Promise.prototype.resolve = Promise.prototype.fulfill = function resolve( value ) {
+Promise.prototype.resolve = Promise.prototype.fulfill = function( value ) {
 	// Throw an error?
 	if ( this._then.settled ) { return this ; }
 
@@ -3116,7 +3154,7 @@ Promise.prototype.resolve = Promise.prototype.fulfill = function resolve( value 
 
 
 
-Promise.prototype._resolveValue = function _resolveValue( value ) {
+Promise.prototype._resolveValue = function( value ) {
 	this._then = Promise._fulfilledThen ;
 	this.value = value ;
 	if ( this.thenHandlers && this.thenHandlers.length ) { this._execFulfillHandlers() ; }
@@ -3127,7 +3165,7 @@ Promise.prototype._resolveValue = function _resolveValue( value ) {
 
 
 // Faster on node v8.x
-Promise.prototype._execThenPromise = function _execThenPromise( thenPromise ) {
+Promise.prototype._execThenPromise = function( thenPromise ) {
 	try {
 		thenPromise.then(
 			result_ => { this.resolve( result_ ) ; } ,
@@ -3141,7 +3179,7 @@ Promise.prototype._execThenPromise = function _execThenPromise( thenPromise ) {
 
 
 
-Promise.prototype.reject = function reject( error ) {
+Promise.prototype.reject = function( error ) {
 	// Throw an error?
 	if ( this._then.settled ) { return this ; }
 
@@ -3160,7 +3198,7 @@ Promise.prototype.reject = function reject( error ) {
 
 
 
-Promise.prototype._execFulfillHandlers = function _execFulfillHandlers() {
+Promise.prototype._execFulfillHandlers = function() {
 	var i ,
 		length = this.thenHandlers.length ;
 
@@ -3179,7 +3217,7 @@ Promise.prototype._execFulfillHandlers = function _execFulfillHandlers() {
 
 // Faster on node v8.x?
 //*
-Promise.prototype._execOneFulfillHandler = function _execOneFulfillHandler( promise , onFulfill ) {
+Promise.prototype._execOneFulfillHandler = function( promise , onFulfill ) {
 	try {
 		promise.resolve( onFulfill( this.value ) ) ;
 	}
@@ -3191,7 +3229,7 @@ Promise.prototype._execOneFulfillHandler = function _execOneFulfillHandler( prom
 
 
 
-Promise.prototype._execRejectionHandlers = function _execRejectionHandlers() {
+Promise.prototype._execRejectionHandlers = function() {
 	var i ,
 		length = this.thenHandlers.length ;
 
@@ -3210,7 +3248,7 @@ Promise.prototype._execRejectionHandlers = function _execRejectionHandlers() {
 
 // Faster on node v8.x?
 //*
-Promise.prototype._execOneRejectHandler = function _execOneRejectHandler( promise , onReject ) {
+Promise.prototype._execOneRejectHandler = function( promise , onReject ) {
 	try {
 		promise.resolve( onReject( this.value ) ) ;
 	}
@@ -3222,13 +3260,13 @@ Promise.prototype._execOneRejectHandler = function _execOneRejectHandler( promis
 
 
 
-Promise.prototype.resolveTimeout = Promise.prototype.fulfillTimeout = function resolveTimeout( time , result ) {
+Promise.prototype.resolveTimeout = Promise.prototype.fulfillTimeout = function( time , result ) {
 	setTimeout( () => this.resolve( result ) , time ) ;
 } ;
 
 
 
-Promise.prototype.rejectTimeout = function rejectTimeout( time , error ) {
+Promise.prototype.rejectTimeout = function( time , error ) {
 	setTimeout( () => this.reject( error ) , time ) ;
 } ;
 
@@ -3241,7 +3279,7 @@ Promise.prototype.rejectTimeout = function rejectTimeout( time , error ) {
 
 
 // .then() variant when the promise is dormant
-Promise._dormantThen = function _dormantThen( onFulfill , onReject ) {
+Promise._dormantThen = function( onFulfill , onReject ) {
 	if ( this.fn ) {
 		// If this is a dormant promise, wake it up now!
 		this._exec() ;
@@ -3270,7 +3308,7 @@ Promise._dormantThen.settled = false ;
 
 
 // .then() variant when the promise is pending
-Promise._pendingThen = function _pendingThen( onFulfill , onReject ) {
+Promise._pendingThen = function( onFulfill , onReject ) {
 	var promise = new Promise() ;
 
 	if ( ! this.thenHandlers ) {
@@ -3291,7 +3329,7 @@ Promise._pendingThen.settled = false ;
 
 
 // .then() variant when the promise is fulfilled
-Promise._fulfilledThen = function _fulfilledThen( onFulfill ) {
+Promise._fulfilledThen = function( onFulfill ) {
 	if ( ! onFulfill ) { return this ; }
 
 	var promise = new Promise() ;
@@ -3314,7 +3352,7 @@ Promise._fulfilledThen.settled = true ;
 
 
 // .then() variant when the promise is rejected
-Promise._rejectedThen = function _rejectedThen( onFulfill , onReject ) {
+Promise._rejectedThen = function( onFulfill , onReject ) {
 	if ( ! onReject ) { return this ; }
 
 	this.handledRejection = true ;
@@ -3343,33 +3381,33 @@ Promise._rejectedThen.settled = true ;
 
 
 
-Promise.prototype.then = function then( onFulfill , onReject ) {
+Promise.prototype.then = function( onFulfill , onReject ) {
 	return this._then( onFulfill , onReject ) ;
 } ;
 
 
 
-Promise.prototype.catch = function _catch( onReject = () => undefined ) {
+Promise.prototype.catch = function( onReject = () => undefined ) {
 	return this._then( undefined , onReject ) ;
 } ;
 
 
 
-Promise.prototype.tap = function tap( onFulfill ) {
+Promise.prototype.tap = function( onFulfill ) {
 	this._then( onFulfill , undefined ) ;
 	return this ;
 } ;
 
 
 
-Promise.prototype.tapCatch = function tapCatch( onReject ) {
+Promise.prototype.tapCatch = function( onReject ) {
 	this._then( undefined , onReject ) ;
 	return this ;
 } ;
 
 
 
-Promise.prototype.finally = function _finally( onSettled ) {
+Promise.prototype.finally = function( onSettled ) {
 	this._then( onSettled , onSettled ) ;
 	// Return this or this._then() ?
 	return this ;
@@ -3378,7 +3416,7 @@ Promise.prototype.finally = function _finally( onSettled ) {
 
 
 // Any unhandled error throw ASAP
-Promise.prototype.fatal = function fatal() {
+Promise.prototype.fatal = function() {
 	this._then( undefined , error => {
 		// Throw async, otherwise it would be catched by .then()
 		nextTick( () => { throw error ; } ) ;
@@ -3387,14 +3425,14 @@ Promise.prototype.fatal = function fatal() {
 
 
 
-Promise.prototype.done = function done( onFulfill , onReject ) {
+Promise.prototype.done = function( onFulfill , onReject ) {
 	this._then( onFulfill , onReject ).fatal() ;
 	return this ;
 } ;
 
 
 
-Promise.prototype.callback = function callback( cb ) {
+Promise.prototype.callback = function( cb ) {
 	this._then(
 		value => { cb( undefined , value ) ; } ,
 		error => { cb( error ) ; }
@@ -3405,7 +3443,7 @@ Promise.prototype.callback = function callback( cb ) {
 
 
 
-Promise.prototype.callbackAll = function callbackAll( cb ) {
+Promise.prototype.callbackAll = function( cb ) {
 	this._then(
 		values => {
 			if ( Array.isArray( values ) ) { cb( undefined , ... values ) ; }
@@ -3419,7 +3457,34 @@ Promise.prototype.callbackAll = function callbackAll( cb ) {
 
 
 
-Promise.prototype.toPromise = function toPromise( promise ) {
+/*
+	The reverse of .callback(), it call the function with a callback argument and return a promise that resolve or reject depending on that callback invocation.
+	Usage:
+		await Promise.callback( callback => myFunctionRelyingOnCallback( [arg1] , [arg2] , [...] , callback ) ;
+*/
+Promise.callback = function( fn ) {
+	return new Promise( ( resolve , reject ) => {
+		fn( ( error , arg ) => {
+			if ( error ) { reject( error ) ; }
+			else { resolve( arg ) ; }
+		} ) ;
+	} ) ;
+} ;
+
+
+
+Promise.callbackAll = function( fn ) {
+	return new Promise( ( resolve , reject ) => {
+		fn( ( error , ... args ) => {
+			if ( error ) { reject( error ) ; }
+			else { resolve( args ) ; }
+		} ) ;
+	} ) ;
+} ;
+
+
+
+Promise.prototype.toPromise = function( promise ) {
 	this._then(
 		value => { promise.resolve( value ) ; } ,
 		error => { promise.reject( error ) ; }
@@ -3438,14 +3503,14 @@ Promise.prototype.toPromise = function toPromise( promise ) {
 
 
 
-Promise.resolve = Promise.fulfill = function resolve( value ) {
+Promise.resolve = Promise.fulfill = function( value ) {
 	if ( Promise.isThenable( value ) ) { return Promise.fromThenable( value ) ; }
 	return Promise._resolveValue( value ) ;
 } ;
 
 
 
-Promise._resolveValue = function _resolveValue( value ) {
+Promise._resolveValue = function( value ) {
 	var promise = new Promise() ;
 	promise._then = Promise._fulfilledThen ;
 	promise.value = value ;
@@ -3454,7 +3519,7 @@ Promise._resolveValue = function _resolveValue( value ) {
 
 
 
-Promise.reject = function reject( error ) {
+Promise.reject = function( error ) {
 	//return new Promise().reject( error ) ;
 	var promise = new Promise() ;
 	promise._then = Promise._rejectedThen ;
@@ -3464,20 +3529,20 @@ Promise.reject = function reject( error ) {
 
 
 
-Promise.resolveTimeout = Promise.fulfillTimeout = function resolveTimeout( timeout , value ) {
+Promise.resolveTimeout = Promise.fulfillTimeout = function( timeout , value ) {
 	return new Promise( resolve => setTimeout( () => resolve( value ) , timeout ) ) ;
 } ;
 
 
 
-Promise.rejectTimeout = function rejectTimeout( timeout , error ) {
+Promise.rejectTimeout = function( timeout , error ) {
 	return new Promise( ( resolve , reject ) => setTimeout( () => reject( error ) , timeout ) ) ;
 } ;
 
 
 
 // A dormant promise is activated the first time a then handler is assigned
-Promise.dormant = function dormant( fn ) {
+Promise.dormant = function( fn ) {
 	var promise = new Promise() ;
 	promise.fn = fn ;
 	return promise ;
@@ -3486,7 +3551,7 @@ Promise.dormant = function dormant( fn ) {
 
 
 // Try-catched Promise.resolve( fn() )
-Promise.try = function try_( fn ) {
+Promise.try = function( fn ) {
 	try {
 		return Promise.resolve( fn() ) ;
 	}
@@ -3503,14 +3568,14 @@ Promise.try = function try_( fn ) {
 
 
 
-Promise.isThenable = function isThenable( value ) {
+Promise.isThenable = function( value ) {
 	return value && typeof value === 'object' && typeof value.then === 'function' ;
 } ;
 
 
 
 // We assume a thenable object here
-Promise.fromThenable = function fromThenable( thenable ) {
+Promise.fromThenable = function( thenable ) {
 	if ( thenable instanceof Promise ) { return thenable ; }
 
 	return new Promise( ( resolve , reject ) => {
@@ -3524,7 +3589,7 @@ Promise.fromThenable = function fromThenable( thenable ) {
 
 
 // When you just want a fast then() function out of anything, without any desync and unchainable
-Promise._bareThen = function _bareThen( value , onFulfill , onReject ) {
+Promise._bareThen = function( value , onFulfill , onReject ) {
 	//if ( Promise.isThenable( value ) )
 	if( value && typeof value === 'object' ) {
 		if ( value instanceof Promise ) {
@@ -3554,7 +3619,7 @@ Promise._bareThen = function _bareThen( value , onFulfill , onReject ) {
 
 // Internal usage, mark all promises as handled ahead of time, useful for series,
 // because a warning would be displayed for unhandled rejection for promises that are not yet processed.
-Promise._handleAll = function _handleAll( iterable ) {
+Promise._handleAll = function( iterable ) {
 	var value ;
 
 	for ( value of iterable ) {
@@ -3567,7 +3632,7 @@ Promise._handleAll = function _handleAll( iterable ) {
 
 
 
-Promise.prototype._unhandledRejection = function _unhandledRejection() {
+Promise.prototype._unhandledRejection = function() {
 	// This promise is currently unhandled
 	// If still unhandled at the end of the synchronous block of code,
 	// output an error message.
@@ -3617,7 +3682,7 @@ Promise.prototype._unhandledRejection = function _unhandledRejection() {
 
 
 
-Promise.prototype.getStatus = function getStatus() {
+Promise.prototype.getStatus = function() {
 	switch ( this._then ) {
 		case Promise._dormantThen :
 			return 'dormant' ;
@@ -3632,7 +3697,7 @@ Promise.prototype.getStatus = function getStatus() {
 
 
 
-Promise.prototype.inspect = function inspect() {
+Promise.prototype.inspect = function() {
 	switch ( this._then ) {
 		case Promise._dormantThen :
 			return 'Promise { <DORMANT> }' ;
@@ -3688,7 +3753,6 @@ var Promise = require( './seventh.js' ) ;
 
 
 Promise.promisifyAll = ( nodeAsyncFn , thisBinding ) => {
-
 	if ( thisBinding === undefined ) {
 		return function( ... args ) {
 			return new Promise( ( resolve , reject ) => {
@@ -3713,7 +3777,6 @@ Promise.promisifyAll = ( nodeAsyncFn , thisBinding ) => {
 
 // Same than .promisifyAll() but only return the callback args #1 instead of an array of args from #1 to #n
 Promise.promisify = ( nodeAsyncFn , thisBinding ) => {
-
 	if ( thisBinding === undefined ) {
 		return function( ... args ) {
 			return new Promise( ( resolve , reject ) => {
@@ -3740,7 +3803,6 @@ Promise.promisify = ( nodeAsyncFn , thisBinding ) => {
 	Pass a function that will be called every time the decoratee return something.
 */
 Promise.returnValueInterceptor = ( interceptor , asyncFn , thisBinding ) => {
-
 	if ( thisBinding === undefined ) {
 		return function( ... args ) {
 			var returnVal = asyncFn.call( this , ... args ) ;
@@ -3754,7 +3816,6 @@ Promise.returnValueInterceptor = ( interceptor , asyncFn , thisBinding ) => {
 		interceptor( returnVal ) ;
 		return returnVal ;
 	} ;
-
 } ;
 
 
@@ -3763,7 +3824,6 @@ Promise.returnValueInterceptor = ( interceptor , asyncFn , thisBinding ) => {
 	Run only once, return always the same promise.
 */
 Promise.once = ( asyncFn , thisBinding ) => {
-
 	var triggered = false ;
 	var result ;
 
@@ -3783,7 +3843,6 @@ Promise.once = ( asyncFn , thisBinding ) => {
 	It does nothing if the decoratee is still in progress, but return the promise of the action in progress.
 */
 Promise.debounce = ( asyncFn , thisBinding ) => {
-
 	var inProgress = null ;
 
 	const outWrapper = () => {
@@ -3808,7 +3867,6 @@ Promise.debounce = ( asyncFn , thisBinding ) => {
 	The use case is .update()/.refresh()/.redraw() functions.
 */
 Promise.debounceUpdate = ( asyncFn , thisBinding ) => {
-
 	var inProgress = null ;
 	var nextUpdateWith = null ;
 	var nextUpdatePromise = null ;
@@ -3858,16 +3916,14 @@ Promise.debounceUpdate = ( asyncFn , thisBinding ) => {
 	The decoratee execution does not overlap, multiple calls are serialized.
 */
 Promise.serialize = ( asyncFn , thisBinding ) => {
-
 	var lastPromise = new Promise.resolve() ;
 
 	return ( ... args ) => {
-
 		var promise = new Promise() ;
 
 		lastPromise.finally( () => {
 			asyncFn.call( thisBinding , ... args )
-			.then( ( value ) => promise.resolve( value ) , ( error ) => promise.reject( error ) ) ;
+				.then( ( value ) => promise.resolve( value ) , ( error ) => promise.reject( error ) ) ;
 		} ) ;
 
 		lastPromise = promise ;
@@ -4040,7 +4096,7 @@ var Promise = require( './seventh.js' ) ;
 
 var exitInProgress = false ;
 
-Promise.asyncExit = function asyncExit( exitCode , timeout ) {
+Promise.asyncExit = function( exitCode , timeout ) {
 	// Already exiting? no need to call it twice!
 	if ( exitInProgress ) { return ; }
 
@@ -4072,7 +4128,7 @@ Promise.asyncExit = function asyncExit( exitCode , timeout ) {
 
 	// We don't care about errors here... We are exiting!
 	Promise.map( listeners , callListener )
-	.finally( () => process.exit( exitCode ) ) ;
+		.finally( () => process.exit( exitCode ) ) ;
 
 	// Quit anyway if it's too long
 	setTimeout( () => process.exit( exitCode ) , timeout ) ;
@@ -4081,7 +4137,7 @@ Promise.asyncExit = function asyncExit( exitCode , timeout ) {
 
 
 // A timeout that ensure a task get the time to perform its action (when there are CPU-bound tasks)
-Promise.resolveSafeTimeout = function resolveSafeTimeout( timeout , value ) {
+Promise.resolveSafeTimeout = function( timeout , value ) {
 	return new Promise( resolve => {
 		setTimeout( () => {
 			setTimeout( () => {
@@ -4456,6 +4512,8 @@ module.exports = {
 	magenta: '\x1b[35m' ,
 	cyan: '\x1b[36m' ,
 	white: '\x1b[37m' ,
+	grey: '\x1b[90m' ,
+	gray: '\x1b[90m' ,
 	brightBlack: '\x1b[90m' ,
 	brightRed: '\x1b[91m' ,
 	brightGreen: '\x1b[92m' ,
@@ -4474,6 +4532,8 @@ module.exports = {
 	bgMagenta: '\x1b[45m' ,
 	bgCyan: '\x1b[46m' ,
 	bgWhite: '\x1b[47m' ,
+	bgGrey: '\x1b[100m' ,
+	bgGray: '\x1b[100m' ,
 	bgBrightBlack: '\x1b[100m' ,
 	bgBrightRed: '\x1b[101m' ,
 	bgBrightGreen: '\x1b[102m' ,
@@ -4483,7 +4543,6 @@ module.exports = {
 	bgBrightCyan: '\x1b[106m' ,
 	bgBrightWhite: '\x1b[107m'
 } ;
-
 
 
 },{}],17:[function(require,module,exports){
@@ -4723,9 +4782,12 @@ var ansi = require( './ansi.js' ) ;
 	%S		string, interpret ^ formatting
 	%r		raw string: without sanitizer
 	%f		float
+	%e		for scientific notation
 	%d	%i	integer
 	%u		unsigned integer
 	%U		unsigned positive integer (>0)
+	%k		metric system
+	%t		time duration, convert ms into H:min:s
 	%h		hexadecimal
 	%x		hexadecimal, force pair of symbols (e.g. 'f' -> '0f')
 	%o		octal
@@ -4745,7 +4807,6 @@ var ansi = require( './ansi.js' ) ;
 	%c		for char? (can receive a string or an integer translated into an UTF8 chars)
 	%C		for currency formating?
 	%B		for Buffer objects?
-	%e		for scientific notation?
 */
 
 exports.formatMethod = function format( ... args ) {
@@ -4943,27 +5004,93 @@ modes.S.noSanitize = true ;
 
 
 
+const NUMBER_FORMAT_REGEX = /([a-zA-Z]?)(.[^a-zA-Z]*)/g ;
+
+
+
 // float
 modes.f = ( arg , modeArg ) => {
-	var n ;
+	var match , k , v , lv , n ,
+		step = 0 , toFixed , toFixedIfDecimal , padding ;
 
 	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-	if ( typeof arg !== 'number' ) { return '0' ; }
-	if ( modeArg !== undefined ) {
-		// Use jQuery number format?
-		switch ( modeArg[ 0 ] ) {
-			case 'p' :
-				n = parseInt( modeArg.slice( 1 ) , 10 ) ;
-				if ( n >= 1 ) { arg = arg.toPrecision( n ) ; }
-				break ;
-			case 'f' :
-				n = parseInt( modeArg.slice( 1 ) , 10 ) ;
-				arg = arg.toFixed( n ) ;
-				break ;
+	if ( typeof arg !== 'number' ) { arg = 0 ; }
+
+	if ( modeArg ) {
+		NUMBER_FORMAT_REGEX.index = 0 ;
+
+		while ( ( match = NUMBER_FORMAT_REGEX.exec( modeArg ) ) ) {
+			[ , k , v ] = match ;
+
+			if ( k === 'p' ) {
+				padding = + v ;
+			}
+			else if ( v[ 0 ] === '.' ) {
+				lv = v[ v.length - 1 ] ;
+
+				if ( lv === '!' ) {
+					n = parseInt( v.slice( 1 , -1 ) , 10 ) ;
+					step = 10 ** ( -n ) ;
+					toFixed = n ;
+				}
+				else if ( lv === '?' ) {
+					n = parseInt( v.slice( 1 , -1 ) , 10 ) ;
+					step = 10 ** ( -n ) ;
+					toFixed = n ;
+					toFixedIfDecimal = true ;
+				}
+				else {
+					n = parseInt( v.slice( 1 ) , 10 ) ;
+					step = 10 ** ( -n ) ;
+				}
+			}
+			else if ( v[ v.length - 1 ] === '.' ) {
+				n = parseInt( v.slice( 0 , -1 ) , 10 ) ;
+				step = 10 ** n ;
+			}
+			else {
+				n = parseInt( v , 10 ) ;
+				step = 10 ** ( Math.ceil( Math.log10( arg + Number.EPSILON ) + Number.EPSILON ) - n ) ;
+			}
 		}
 	}
-	return '' + arg ;
+
+	if ( step ) { arg = round( arg , step ) ; }
+
+	if ( toFixed !== undefined && ( ! toFixedIfDecimal || arg !== Math.trunc( arg ) ) ) {
+		arg = arg.toFixed( toFixed ) ;
+	}
+	else {
+		arg = '' + arg ;
+	}
+
+	if ( padding ) {
+		n = arg.indexOf( '.' ) ;
+		if ( n === -1 ) { n = arg.length ; }
+		if ( n < padding ) { arg = '0'.repeat( padding - n ) + arg ; }
+	}
+
+	return arg ;
 } ;
+
+modes.f.noSanitize = true ;
+
+
+
+// integer
+modes.e = ( arg , modeArg ) => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg !== 'number' ) { arg = 0 ; }
+
+	if ( modeArg ) {
+		return '' + arg.toExponential( parseInt( modeArg , 10 ) - 1 ) ;
+	}
+
+	return '' + arg.toExponential() ;
+
+} ;
+
+modes.e.noSanitize = true ;
 
 
 
@@ -4974,14 +5101,7 @@ modes.d = modes.i = arg => {
 	return '0' ;
 } ;
 
-
-
-// metric system
-modes.k = arg => {
-	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-	if ( typeof arg !== 'number' ) { return '0' ; }
-	return metricPrefix( arg ) ;
-} ;
+modes.i.noSanitize = true ;
 
 
 
@@ -4992,6 +5112,8 @@ modes.u = arg => {
 	return '0' ;
 } ;
 
+modes.u.noSanitize = true ;
+
 
 
 // unsigned positive integer
@@ -5000,6 +5122,61 @@ modes.U = arg => {
 	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 1 ) ; }
 	return '1' ;
 } ;
+
+modes.U.noSanitize = true ;
+
+
+
+// metric system
+modes.k = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg !== 'number' ) { return '0' ; }
+	return metricPrefix( arg ) ;
+} ;
+
+modes.k.noSanitize = true ;
+
+
+
+// time duration, transform ms into H:min:s
+// Later it should format Date as well: number=duration, date object=date
+// Note that it would not replace moment.js, but it could uses it.
+modes.t = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg !== 'number' ) { return '(NaN)' ; }
+
+	var s = Math.floor( arg / 1000 ) ;
+	if ( s < 60 ) { return s + 's' ; }
+
+	var min = Math.floor( s / 60 ) ;
+	s = s % 60 ;
+	if ( min < 60 ) { return min + 'min' + zeroPadding( s ) + 's' ; }
+
+	var h = Math.floor( min / 60 ) ;
+	min = min % 60 ;
+	//if ( h < 24 ) { return h + 'h' + zeroPadding( min ) +'min' + zeroPadding( s ) + 's' ; }
+
+	return h + 'h' + zeroPadding( min ) + 'min' + zeroPadding( s ) + 's' ;
+} ;
+
+modes.t.noSanitize = true ;
+
+// Transform a number to a string, pad zero to the left if necessary
+function zeroPadding( n , width = 2 ) {
+	n = '' + n ;
+	if ( n.length < width ) { n = '0'.repeat( width - n.length ) + n ; }
+	return n ;
+}
+
+
+// unsigned hexadecimal
+modes.h = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ; }
+	return '0' ;
+} ;
+
+modes.h.noSanitize = true ;
 
 
 
@@ -5014,14 +5191,7 @@ modes.x = arg => {
 	return value ;
 } ;
 
-
-
-// unsigned hexadecimal
-modes.h = arg => {
-	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ; }
-	return '0' ;
-} ;
+modes.x.noSanitize = true ;
 
 
 
@@ -5032,6 +5202,8 @@ modes.o = arg => {
 	return '0' ;
 } ;
 
+modes.o.noSanitize = true ;
+
 
 
 // unsigned binary
@@ -5040,6 +5212,8 @@ modes.b = arg => {
 	if ( typeof arg === 'number' ) { return '' + Math.max( Math.floor( arg ) , 0 ).toString( 2 ) ; }
 	return '0' ;
 } ;
+
+modes.b.noSanitize = true ;
 
 
 
@@ -5104,6 +5278,7 @@ modes.J = arg => arg === undefined ? 'null' : JSON.stringify( arg ) ;
 
 // drop
 modes.D = () => '' ;
+modes.D.noSanitize = true ;
 
 
 
@@ -5298,10 +5473,28 @@ exports.format.hasFormatting = function hasFormatting( str ) {
 
 
 
+// From math-kit module
+const EPSILON = 0.0000000001 ;
+const INVERSE_EPSILON = Math.round( 1 / EPSILON ) ;
+
+function epsilonRound( v ) {
+	return Math.round( v * INVERSE_EPSILON ) / INVERSE_EPSILON ;
+}
+
+// Round with precision
+function round( v , step ) {
+	// use: v * ( 1 / step )
+	// not: v / step
+	// reason: epsilon rounding errors
+	return epsilonRound( step * Math.round( v * ( 1 / step ) ) ) ;
+}
+
+
+
 // Metric prefix
-var mulPrefix = [ '' , 'k' , 'M' , 'G' , 'T' , 'P' , 'E' , 'Z' , 'Y' ] ;
-var subMulPrefix = [ '' , 'm' , 'µ' , 'n' , 'p' , 'f' , 'a' , 'z' , 'y' ] ;
-var roundStep = [ 100 , 10 , 1 ] ;
+const MUL_PREFIX = [ '' , 'k' , 'M' , 'G' , 'T' , 'P' , 'E' , 'Z' , 'Y' ] ;
+const SUB_MUL_PREFIX = [ '' , 'm' , 'µ' , 'n' , 'p' , 'f' , 'a' , 'z' , 'y' ] ;
+const IROUND_STEP = [ 100 , 10 , 1 ] ;
 
 
 
@@ -5315,16 +5508,16 @@ function metricPrefix( n ) {
 		log = Math.floor( Math.log10( n ) ) ;
 		logDiv3 = Math.floor( log / 3 ) ;
 		logMod = log % 3 ;
-		base = round( n / ( Math.pow( 1000 , logDiv3 ) ) , roundStep[ logMod ] ) ;
-		prefix = mulPrefix[ logDiv3 ] ;
+		base = iround( n / ( Math.pow( 1000 , logDiv3 ) ) , IROUND_STEP[ logMod ] ) ;
+		prefix = MUL_PREFIX[ logDiv3 ] ;
 	}
 	else {
 		log = Math.floor( Math.log10( n ) ) ;
 		logDiv3 = Math.floor( log / 3 ) ;
 		logMod = log % 3 ;
 		if ( logMod < 0 ) { logMod += 3 ; }
-		base = round( n / ( Math.pow( 1000 , logDiv3 ) ) , roundStep[ logMod ] ) ;
-		prefix = subMulPrefix[ -logDiv3 ] ;
+		base = iround( n / ( Math.pow( 1000 , logDiv3 ) ) , IROUND_STEP[ logMod ] ) ;
+		prefix = SUB_MUL_PREFIX[ -logDiv3 ] ;
 	}
 
 	return '' + base + prefix ;
@@ -5332,8 +5525,8 @@ function metricPrefix( n ) {
 
 
 
-function round( v , step ) {
-	return Math.round( ( v + Number.EPSILON ) * step ) / step ;
+function iround( v , istep ) {
+	return Math.round( ( v + Number.EPSILON ) * istep ) / istep ;
 }
 
 
@@ -5419,7 +5612,8 @@ function inspect( options , variable ) {
 
 	if ( ! options.style ) { options.style = inspectStyle.none ; }
 	else if ( typeof options.style === 'string' ) { options.style = inspectStyle[ options.style ] ; }
-	else { options.style = Object.assign( {} , inspectStyle.none , options.style ) ; }
+	// Too slow:
+	//else { options.style = Object.assign( {} , inspectStyle.none , options.style ) ; }
 
 	if ( options.depth === undefined ) { options.depth = 3 ; }
 	if ( options.maxLength === undefined ) { options.maxLength = 250 ; }
@@ -5441,7 +5635,7 @@ function inspect( options , variable ) {
 	var str = inspect_( runtime , options , variable ) ;
 
 	if ( str.length > options.outputMaxLength ) {
-		str = str.slice( 0 , options.outputMaxLength - 1 ) + '…' ;
+		str = options.style.truncate( str , options.outputMaxLength ) ;
 	}
 
 	return str ;
@@ -5835,7 +6029,7 @@ function inspectError( options , error ) {
 	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
 
 	if ( ! ( error instanceof Error ) ) {
-		return 'Not an error -- regular variable inspection: ' + inspect( options , error ) ;
+		return 'inspectError: not an error -- regular variable inspection: ' + inspect( options , error ) ;
 	}
 
 	if ( ! options.style ) { options.style = inspectStyle.none ; }
@@ -5851,6 +6045,10 @@ function inspectError( options , error ) {
 	str += options.style.errorMessage( error.message ) + '\n' ;
 
 	if ( stack ) { str += options.style.errorStack( stack ) + '\n' ; }
+
+	if ( error.from ) {
+		str += options.style.newline + options.style.errorFromMessage( 'Error created from:' ) + options.style.newline + inspectError( options , error.from ) ;
+	}
 
 	return str ;
 }
@@ -5940,7 +6138,9 @@ inspectStyle.none = {
 	errorStackMethodAs: inspectStyleNoop ,
 	errorStackFile: inspectStyleNoop ,
 	errorStackLine: inspectStyleNoop ,
-	errorStackColumn: inspectStyleNoop
+	errorStackColumn: inspectStyleNoop ,
+	errorFromMessage: inspectStyleNoop ,
+	truncate: ( str , maxLength ) => str.slice( 0 , maxLength - 1 ) + '…'
 } ;
 
 
@@ -5976,7 +6176,19 @@ inspectStyle.color = Object.assign( {} , inspectStyle.none , {
 	errorStackMethodAs: str => ansi.yellow + str + ansi.reset ,
 	errorStackFile: str => ansi.brightCyan + str + ansi.reset ,
 	errorStackLine: str => ansi.blue + str + ansi.reset ,
-	errorStackColumn: str => ansi.magenta + str + ansi.reset
+	errorStackColumn: str => ansi.magenta + str + ansi.reset ,
+	errorFromMessage: str => ansi.yellow + ansi.underline + str + ansi.reset ,
+	truncate: ( str , maxLength ) => {
+		var trail = ansi.gray + '…' + ansi.reset ;
+		str = str.slice( 0 , maxLength - trail.length ) ;
+
+		// Search for an ansi escape sequence at the end, that could be truncated.
+		// The longest one is '\x1b[107m': 6 characters.
+		var lastEscape = str.lastIndexOf( '\x1b' ) ;
+		if ( lastEscape >= str.length - 6 ) { str = str.slice( 0 , lastEscape ) ; }
+
+		return str + trail ;
+	}
 } ) ;
 
 
@@ -6002,9 +6214,9 @@ inspectStyle.html = Object.assign( {} , inspectStyle.none , {
 	errorStackMethodAs: str => '<span style="color:yellow">' + str + '</span>' ,
 	errorStackFile: str => '<span style="color:cyan">' + str + '</span>' ,
 	errorStackLine: str => '<span style="color:blue">' + str + '</span>' ,
-	errorStackColumn: str => '<span style="color:gray">' + str + '</span>'
+	errorStackColumn: str => '<span style="color:gray">' + str + '</span>' ,
+	errorFromMessage: str => '<span style="color:yellow">' + str + '</span>'
 } ) ;
-
 
 
 }).call(this,{"isBuffer":require("../../../../../../../../opt/node.js-v10.13.0/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
