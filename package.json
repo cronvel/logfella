@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "engines": {
     "node": ">=6.0.0"
   },
@@ -12,9 +12,9 @@
   "dependencies": {
     "kung-fig-tree-ops": "^0.45.4",
     "logfella-common-transport": "^1.0.1",
-    "seventh": "^0.7.28",
-    "string-kit": "^0.10.1",
-    "tree-kit": "^0.6.1"
+    "seventh": "^0.7.30",
+    "string-kit": "^0.11.0",
+    "tree-kit": "^0.6.2"
   },
   "devDependencies": {},
   "scripts": {
