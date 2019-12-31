@@ -852,7 +852,7 @@ else {
 
 
 }).call(this,require('_process'))
-},{"../../../":undefined,"../../../package.json":undefined,"./BrowserConsole.transport.js":1,"./messageFormatter.js":3,"./timeFormatter.js":4,"_process":46,"kung-fig-tree-ops":5,"logfella-common-transport":6,"os":44,"path":45,"seventh":14,"string-kit":27,"util":49}],3:[function(require,module,exports){
+},{"../../../":undefined,"../../../package.json":undefined,"./BrowserConsole.transport.js":1,"./messageFormatter.js":3,"./timeFormatter.js":4,"_process":46,"kung-fig-tree-ops":5,"logfella-common-transport":6,"os":44,"path":45,"seventh":14,"string-kit":28,"util":50}],3:[function(require,module,exports){
 /*
 	Logfella
 
@@ -1211,7 +1211,7 @@ exports.json = function( data , cache ) {
 } ;
 
 
-},{"string-kit":27,"tree-kit":38}],4:[function(require,module,exports){
+},{"string-kit":28,"tree-kit":39}],4:[function(require,module,exports){
 /*
 	Logfella
 
@@ -3393,7 +3393,13 @@ Promise.prototype.catch = function( onReject = () => undefined ) {
 
 
 
-Promise.prototype.tap = function( onFulfill ) {
+Promise.prototype.finally = function( onSettled ) {
+	return this._then( onSettled , onSettled ) ;
+} ;
+
+
+
+Promise.prototype.tap = Promise.prototype.tapThen = function( onFulfill ) {
 	this._then( onFulfill , undefined ) ;
 	return this ;
 } ;
@@ -3407,9 +3413,8 @@ Promise.prototype.tapCatch = function( onReject ) {
 
 
 
-Promise.prototype.finally = function( onSettled ) {
+Promise.prototype.tapFinally = function( onSettled ) {
 	this._then( onSettled , onSettled ) ;
-	// Return this or this._then() ?
 	return this ;
 } ;
 
@@ -3458,7 +3463,7 @@ Promise.prototype.callbackAll = function( cb ) {
 
 
 /*
-	The reverse of .callback(), it call the function with a callback argument and return a promise that resolve or reject depending on that callback invocation.
+	The reverse of .callback(), it calls the function with a callback argument and return a promise that resolve or reject depending on that callback invocation.
 	Usage:
 		await Promise.callback( callback => myFunctionRelyingOnCallback( [arg1] , [arg2] , [...] , callback ) ;
 */
@@ -3484,13 +3489,39 @@ Promise.callbackAll = function( fn ) {
 
 
 
-Promise.prototype.toPromise = function( promise ) {
+Promise.prototype.toPromise =	// <-- DEPRECATED, use .propagate
+Promise.prototype.propagate = function( promise ) {
 	this._then(
 		value => { promise.resolve( value ) ; } ,
 		error => { promise.reject( error ) ; }
 	) ;
 
 	return this ;
+} ;
+
+
+
+
+
+/*
+	Foreign promises facilities
+*/
+
+
+
+Promise.propagate = function( foreignPromise , promise ) {
+	foreignPromise.then(
+		value => { promise.resolve( value ) ; } ,
+		error => { promise.reject( error ) ; }
+	) ;
+
+	return foreignPromise ;
+} ;
+
+
+
+Promise.finally = function( foreignPromise , onSettled ) {
+	return foreignPromise.then( onSettled , onSettled ) ;
 } ;
 
 
@@ -3537,6 +3568,18 @@ Promise.resolveTimeout = Promise.fulfillTimeout = function( timeout , value ) {
 
 Promise.rejectTimeout = function( timeout , error ) {
 	return new Promise( ( resolve , reject ) => setTimeout( () => reject( error ) , timeout ) ) ;
+} ;
+
+
+
+Promise.resolveNextTick = Promise.fulfillNextTick = function( value ) {
+	return new Promise( resolve => nextTick( () => resolve( value ) ) ) ;
+} ;
+
+
+
+Promise.rejectNextTick = function( error ) {
+	return new Promise( ( resolve , reject ) => nextTick( () => reject( error ) ) ) ;
 } ;
 
 
@@ -3716,6 +3759,34 @@ Promise.prototype.inspect = function() {
 Promise.resolved = Promise.dummy = Promise.resolve() ;
 
 
+
+
+
+/*
+	Browser specific.
+*/
+
+
+
+if ( process.browser ) {
+	Promise.prototype.resolveAtAnimationFrame = function( value ) {
+		window.requestAnimationFrame( () => this.resolve( value ) ) ;
+	} ;
+
+	Promise.prototype.rejectAtAnimationFrame = function( error ) {
+		window.requestAnimationFrame( () => this.reject( error ) ) ;
+	} ;
+
+	Promise.resolveAtAnimationFrame = function( value ) {
+		return new Promise( resolve => window.requestAnimationFrame( () => resolve( value ) ) ) ;
+	} ;
+
+	Promise.rejectAtAnimationFrame = function( error ) {
+		return new Promise( ( resolve , reject ) => window.requestAnimationFrame( () => reject( error ) ) ) ;
+	} ;
+}
+
+
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("timers").setImmediate)
 },{"_process":46,"setimmediate":7,"timers":47}],11:[function(require,module,exports){
 /*
@@ -3753,20 +3824,33 @@ var Promise = require( './seventh.js' ) ;
 
 
 Promise.promisifyAll = ( nodeAsyncFn , thisBinding ) => {
-	if ( thisBinding === undefined ) {
-		return function( ... args ) {
+	// Little optimization here to have a promisified function as fast as possible
+	if ( thisBinding ) {
+		return ( ... args ) => {
 			return new Promise( ( resolve , reject ) => {
-				nodeAsyncFn.call( this , ... args , ( error , ... cbArgs ) => {
-					return error ? reject( error ) : resolve( cbArgs ) ;
+				nodeAsyncFn.call( thisBinding , ... args , ( error , ... cbArgs ) => {
+					if ( error ) {
+						if ( cbArgs.length && error instanceof Error ) { error.args = cbArgs ; }
+						reject( error ) ;
+					}
+					else {
+						resolve( cbArgs ) ;
+					}
 				} ) ;
 			} ) ;
 		} ;
 	}
 
-	return ( ... args ) => {
+	return function( ... args ) {
 		return new Promise( ( resolve , reject ) => {
-			nodeAsyncFn.call( thisBinding , ... args , ( error , ... cbArgs ) => {
-				return error ? reject( error ) : resolve( cbArgs ) ;
+			nodeAsyncFn.call( this , ... args , ( error , ... cbArgs ) => {
+				if ( error ) {
+					if ( cbArgs.length && error instanceof Error ) { error.args = cbArgs ; }
+					reject( error ) ;
+				}
+				else {
+					resolve( cbArgs ) ;
+				}
 			} ) ;
 		} ) ;
 	} ;
@@ -3777,24 +3861,36 @@ Promise.promisifyAll = ( nodeAsyncFn , thisBinding ) => {
 
 // Same than .promisifyAll() but only return the callback args #1 instead of an array of args from #1 to #n
 Promise.promisify = ( nodeAsyncFn , thisBinding ) => {
-	if ( thisBinding === undefined ) {
-		return function( ... args ) {
+	// Little optimization here to have a promisified function as fast as possible
+	if ( thisBinding ) {
+		return ( ... args ) => {
 			return new Promise( ( resolve , reject ) => {
-				nodeAsyncFn.call( this , ... args , ( error , cbArg ) => {
-					return error ? reject( error ) : resolve( cbArg ) ;
+				nodeAsyncFn.call( thisBinding , ... args , ( error , cbArg ) => {
+					if ( error ) {
+						if ( cbArg !== undefined && error instanceof Error ) { error.arg = cbArg ; }
+						reject( error ) ;
+					}
+					else {
+						resolve( cbArg ) ;
+					}
 				} ) ;
 			} ) ;
 		} ;
 	}
 
-	return ( ... args ) => {
+	return function( ... args ) {
 		return new Promise( ( resolve , reject ) => {
-			nodeAsyncFn.call( thisBinding , ... args , ( error , cbArg ) => {
-				return error ? reject( error ) : resolve( cbArg ) ;
+			nodeAsyncFn.call( this , ... args , ( error , cbArg ) => {
+				if ( error ) {
+					if ( cbArg !== undefined && error instanceof Error ) { error.arg = cbArg ; }
+					reject( error ) ;
+				}
+				else {
+					resolve( cbArg ) ;
+				}
 			} ) ;
 		} ) ;
 	} ;
-
 } ;
 
 
@@ -3803,16 +3899,8 @@ Promise.promisify = ( nodeAsyncFn , thisBinding ) => {
 	Pass a function that will be called every time the decoratee return something.
 */
 Promise.returnValueInterceptor = ( interceptor , asyncFn , thisBinding ) => {
-	if ( thisBinding === undefined ) {
-		return function( ... args ) {
-			var returnVal = asyncFn.call( this , ... args ) ;
-			interceptor( returnVal ) ;
-			return returnVal ;
-		} ;
-	}
-
-	return ( ... args ) => {
-		var returnVal = asyncFn.call( thisBinding , ... args ) ;
+	return function( ... args ) {
+		var returnVal = asyncFn.call( thisBinding || this , ... args ) ;
 		interceptor( returnVal ) ;
 		return returnVal ;
 	} ;
@@ -3827,13 +3915,34 @@ Promise.once = ( asyncFn , thisBinding ) => {
 	var triggered = false ;
 	var result ;
 
-	return ( ... args ) => {
+	return function( ... args ) {
 		if ( ! triggered ) {
 			triggered = true ;
-			result = asyncFn.call( thisBinding , ... args ) ;
+			result = asyncFn.call( thisBinding || this , ... args ) ;
 		}
 
 		return result ;
+	} ;
+} ;
+
+
+
+/*
+	The decoratee execution does not overlap, multiple calls are serialized.
+*/
+Promise.serialize = ( asyncFn , thisBinding ) => {
+	var lastPromise = new Promise.resolve() ;
+
+	return function( ... args ) {
+		var promise = new Promise() ;
+
+		lastPromise.finally( () => {
+			Promise.propagate( asyncFn.call( thisBinding || this , ... args ) , promise ) ;
+		} ) ;
+
+		lastPromise = promise ;
+
+		return promise ;
 	} ;
 } ;
 
@@ -3849,11 +3958,11 @@ Promise.debounce = ( asyncFn , thisBinding ) => {
 		inProgress = null ;
 	} ;
 
-	return ( ... args ) => {
+	return function( ... args ) {
 		if ( inProgress ) { return inProgress ; }
 
-		inProgress = asyncFn.call( thisBinding , ... args ) ;
-		inProgress.then( outWrapper , outWrapper ) ;
+		inProgress = asyncFn.call( thisBinding || this , ... args ) ;
+		Promise.finally( inProgress , outWrapper ) ;
 		return inProgress ;
 	} ;
 } ;
@@ -3883,69 +3992,151 @@ Promise.debounceUpdate = ( asyncFn , thisBinding ) => {
 			nextUpdatePromise = null ;
 
 			// Call the asyncFn again
-			inProgress = asyncFn.call( thisBinding , ... args ) ;
+			inProgress = asyncFn.call( ... args ) ;
 
 			// Forward the result to the pending promise
-			inProgress.then( ( value ) => sharedPromise.resolve( value ) , ( error ) => sharedPromise.reject( error ) ) ;
+			Promise.propagate( inProgress , sharedPromise ) ;
 
 			// BTW, trigger again the outWrapper
-			inProgress.then( outWrapper , outWrapper ) ;
+			Promise.finally( inProgress , outWrapper ) ;
 
 			return inProgress ;
 		}
 	} ;
 
-	const inWrapper = ( ... args ) => {
+	return function( ... args ) {
+		var localThis = thisBinding || this ;
+
 		if ( inProgress ) {
 			if ( ! nextUpdatePromise ) { nextUpdatePromise = new Promise() ; }
-			nextUpdateWith = args ;
+			nextUpdateWith = [ localThis , ... args ] ;
 			return nextUpdatePromise ;
 		}
 
-		inProgress = asyncFn.call( thisBinding , ... args ) ;
-		inProgress.then( outWrapper , outWrapper ) ;
+		inProgress = asyncFn.call( localThis , ... args ) ;
+		Promise.finally( inProgress , outWrapper ) ;
 		return inProgress ;
 	} ;
-
-	return inWrapper ;
 } ;
 
 
 
 /*
-	The decoratee execution does not overlap, multiple calls are serialized.
+	Debounce for synchronization algorithm.
+	Get two functions, one for getting from upstream, one for a full sync with upstream (getting AND updating).
+	No operation overlap for a given resourceId.
+	Depending on the configuration, it is either like .debounce() or like .debounceUpdate().
+
+	*Params:
+		fn: the function
+		thisBinding: the this binding, if any
+		delay: the minimum delay between to call
+			for get: nothing is done is the delay is not met, simply return the last promise
+			for update/fullSync, it waits for that delay before synchronizing again
 */
-Promise.serialize = ( asyncFn , thisBinding ) => {
-	var lastPromise = new Promise.resolve() ;
+Promise.debounceSync = ( getParams , fullSyncParams ) => {
+	var perResourceData = new Map() ;
 
-	return ( ... args ) => {
-		var promise = new Promise() ;
+	const getResourceData = resourceId => {
+		var resourceData = perResourceData.get( resourceId ) ;
 
-		lastPromise.finally( () => {
-			asyncFn.call( thisBinding , ... args )
-				.then( ( value ) => promise.resolve( value ) , ( error ) => promise.reject( error ) ) ;
-		} ) ;
+		if ( ! resourceData ) {
+			resourceData = {
+				inProgress: null ,
+				inProgressIsFull: null ,
+				last: null ,				// Get or full sync promise
+				lastTime: null ,			// Get or full sync time
+				lastFullSync: null ,		// last full sync promise
+				lastFullSyncTime: null ,	// last full sync time
+				nextFullSyncPromise: null ,	// the promise for the next fullSync iteration
+				nextFullSyncWith: null 	// the 'this' and arguments for the next fullSync iteration
+			} ;
 
-		lastPromise = promise ;
+			perResourceData.set( resourceId , resourceData ) ;
+		}
 
-		return promise ;
+		return resourceData ;
 	} ;
+
+
+	const outWrapper = ( resourceData , level ) => {
+		// level 2: fullSync, 1: get, 0: nothing but a delay
+		var delta , args , sharedPromise , now = new Date() ;
+		//lastTime = resourceData.lastTime , lastFullSyncTime = resourceData.lastFullSyncTime ;
+
+		resourceData.inProgress = null ;
+
+		if ( level >= 2 ) { resourceData.lastFullSyncTime = resourceData.lastTime = now ; }
+		else if ( level >= 1 ) { resourceData.lastTime = now ; }
+
+		if ( resourceData.nextFullSyncWith ) {
+			if ( fullSyncParams.delay && resourceData.lastFullSyncTime && ( delta = now - resourceData.lastFullSyncTime - fullSyncParams.delay ) < 0 ) {
+				resourceData.inProgress = Promise.resolveTimeout( -delta + 1 ) ;	// Strangely, sometime it is trigerred 1ms too soon
+				resourceData.inProgress.finally( () => outWrapper( resourceData , 0 ) ) ;
+				return resourceData.nextFullSyncPromise ;
+			}
+
+			args = resourceData.nextFullSyncWith ;
+			resourceData.nextFullSyncWith = null ;
+			sharedPromise = resourceData.nextFullSyncPromise ;
+			resourceData.nextFullSyncPromise = null ;
+
+			// Call the fullSyncParams.fn again
+			resourceData.lastFullSync = resourceData.last = resourceData.inProgress = fullSyncParams.fn.call( ... args ) ;
+
+			// Forward the result to the pending promise
+			Promise.propagate( resourceData.inProgress , sharedPromise ) ;
+
+			// BTW, trigger again the outWrapper
+			Promise.finally( resourceData.inProgress , () => outWrapper( resourceData , 2 ) ) ;
+
+			return resourceData.inProgress ;
+		}
+	} ;
+
+	const getInWrapper = function( resourceId , ... args ) {
+		var localThis = getParams.thisBinding || this ,
+			resourceData = getResourceData( resourceId ) ;
+
+		if ( resourceData.inProgress ) { return resourceData.inProgress ; }
+		if ( getParams.delay && resourceData.lastTime && new Date() - resourceData.lastTime < getParams.delay ) { return resourceData.last ; }
+
+		resourceData.last = resourceData.inProgress = getParams.fn.call( localThis , resourceId , ... args ) ;
+		resourceData.inProgressIsFull = false ;
+		Promise.finally( resourceData.inProgress , () => outWrapper( resourceData , 1 ) ) ;
+		return resourceData.inProgress ;
+	} ;
+
+	const fullSyncInWrapper = function( resourceId , ... args ) {
+		var delta ,
+			localThis = fullSyncParams.thisBinding || this ,
+			resourceData = getResourceData( resourceId ) ;
+
+		if ( ! resourceData.inProgress && fullSyncParams.delay && resourceData.lastFullSyncTime && ( delta = new Date() - resourceData.lastFullSyncTime - fullSyncParams.delay ) < 0 ) {
+			resourceData.inProgress = Promise.resolveTimeout( -delta + 1 ) ;	// Strangely, sometime it is trigerred 1ms too soon
+			Promise.finally( resourceData.inProgress , () => outWrapper( resourceData , 0 ) ) ;
+		}
+
+		if ( resourceData.inProgress ) {
+			// No difference between in-progress is 'get' or 'fullSync'
+			if ( ! resourceData.nextFullSyncPromise ) { resourceData.nextFullSyncPromise = new Promise() ; }
+			resourceData.nextFullSyncWith = [ localThis , resourceId , ... args ] ;
+			return resourceData.nextFullSyncPromise ;
+		}
+
+		resourceData.lastFullSync = resourceData.last = resourceData.inProgress = fullSyncParams.fn.call( localThis , resourceId , ... args ) ;
+		Promise.finally( resourceData.inProgress , () => outWrapper( resourceData , 2 ) ) ;
+		return resourceData.inProgress ;
+	} ;
+
+	return [ getInWrapper , fullSyncInWrapper ] ;
 } ;
 
 
 
 Promise.timeout = ( timeout , asyncFn , thisBinding ) => {
-	if ( thisBinding === undefined ) {
-		return function( ... args ) {
-			var promise = asyncFn.call( this , ... args ) ;
-			// Careful: not my promise, so cannot retrieve its status
-			setTimeout( () => promise.reject( new Error( 'Timeout' ) ) , timeout ) ;
-			return promise ;
-		} ;
-	}
-
-	return ( ... args ) => {
-		var promise = asyncFn.call( thisBinding , ... args ) ;
+	return function( ... args ) {
+		var promise = asyncFn.call( thisBinding || this , ... args ) ;
 		// Careful: not my promise, so cannot retrieve its status
 		setTimeout( () => promise.reject( new Error( 'Timeout' ) ) , timeout ) ;
 		return promise ;
@@ -3957,17 +4148,8 @@ Promise.timeout = ( timeout , asyncFn , thisBinding ) => {
 
 // Like .timeout(), but here the timeout value is not passed at creation, but as the first arg of each call
 Promise.variableTimeout = ( asyncFn , thisBinding ) => {
-	if ( thisBinding === undefined ) {
-		return function( timeout , ... args ) {
-			var promise = asyncFn.call( this , ... args ) ;
-			// Careful: not my promise, so cannot retrieve its status
-			setTimeout( () => promise.reject( new Error( 'Timeout' ) ) , timeout ) ;
-			return promise ;
-		} ;
-	}
-
-	return ( timeout , ... args ) => {
-		var promise = asyncFn.call( thisBinding , ... args ) ;
+	return function( timeout , ... args ) {
+		var promise = asyncFn.call( thisBinding || this , ... args ) ;
 		// Careful: not my promise, so cannot retrieve its status
 		setTimeout( () => promise.reject( new Error( 'Timeout' ) ) , timeout ) ;
 		return promise ;
@@ -4582,7 +4764,7 @@ module.exports = camel ;
 
 
 // Transform alphanum separated by underscore or minus to camel case
-camel.toCamelCase = function toCamelCase( str , preserveUpperCase = false ) {
+camel.toCamelCase = function( str , preserveUpperCase = false ) {
 	if ( ! str || typeof str !== 'string' ) { return '' ; }
 
 	return str.replace( /^[\s_-]*([^\s_-]+)|[\s_-]+([^\s_-]?)([^\s_-]*)/g , ( match , firstWord , firstLetter , endOfWord ) => {
@@ -4602,18 +4784,21 @@ camel.toCamelCase = function toCamelCase( str , preserveUpperCase = false ) {
 
 
 
-// Transform camel case to alphanum separated by minus
-camel.camelCaseToDash =
-camel.camelCaseToDashed = function camelCaseToDash( str ) {
+camel.camelCaseToSeparated = function( str , separator = ' ' ) {
 	if ( ! str || typeof str !== 'string' ) { return '' ; }
 
 	return str.replace( /^([A-Z])|([A-Z])/g , ( match , firstLetter , letter ) => {
 
 		if ( firstLetter ) { return firstLetter.toLowerCase() ; }
-		return '-' + letter.toLowerCase() ;
+		return separator + letter.toLowerCase() ;
 	} ) ;
 } ;
 
+
+
+// Transform camel case to alphanum separated by minus
+camel.camelCaseToDash =
+camel.camelCaseToDashed = ( str ) => camel.camelCaseToSeparated( str , '-' ) ;
 
 
 },{}],18:[function(require,module,exports){
@@ -4655,35 +4840,19 @@ camel.camelCaseToDashed = function camelCaseToDash( str ) {
 
 // From Mozilla Developper Network
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
-exports.regExp = exports.regExpPattern = function escapeRegExpPattern( str ) {
-	return str.replace( /([.*+?^${}()|[\]/\\])/g , '\\$1' ) ;
-} ;
+exports.regExp = exports.regExpPattern = str => str.replace( /([.*+?^${}()|[\]/\\])/g , '\\$1' ) ;
 
-exports.regExpReplacement = function escapeRegExpReplacement( str ) {
-	return str.replace( /\$/g , '$$$$' ) ;	// This replace any single $ by a double $$
-} ;
+// This replace any single $ by a double $$
+exports.regExpReplacement = str => str.replace( /\$/g , '$$$$' ) ;
 
+// Escape for string.format()
+// This replace any single % by a double %%
+exports.format = str => str.replace( /%/g , '%%' ) ;
 
+exports.jsSingleQuote = str => exports.control( str ).replace( /'/g , "\\'" ) ;
+exports.jsDoubleQuote = str => exports.control( str ).replace( /"/g , '\\"' ) ;
 
-exports.format = function escapeFormat( str ) {
-	return str.replace( /%/g , '%%' ) ;	// This replace any single % by a double %%
-} ;
-
-
-
-exports.jsSingleQuote = function escapeJsSingleQuote( str ) {
-	return exports.control( str ).replace( /'/g , "\\'" ) ;
-} ;
-
-exports.jsDoubleQuote = function escapeJsDoubleQuote( str ) {
-	return exports.control( str ).replace( /"/g , '\\"' ) ;
-} ;
-
-
-
-exports.shellArg = function escapeShellArg( str ) {
-	return '\'' + str.replace( /'/g , "'\\''" ) + '\'' ;
-} ;
+exports.shellArg = str => '\'' + str.replace( /'/g , "'\\''" ) + '\'' ;
 
 
 
@@ -4695,15 +4864,13 @@ var escapeControlMap = {
 } ;
 
 // Escape \r \n \t so they become readable again, escape all ASCII control character as well, using \x syntaxe
-exports.control = function escapeControl( str , keepNewLineAndTab = false ) {
-	return str.replace( /[\x00-\x1f\x7f]/g , ( match ) => {
-		if ( keepNewLineAndTab && ( match === '\n' || match === '\t' ) ) { return match ; }
-		if ( escapeControlMap[ match ] !== undefined ) { return escapeControlMap[ match ] ; }
-		var hex = match.charCodeAt( 0 ).toString( 16 ) ;
-		if ( hex.length % 2 ) { hex = '0' + hex ; }
-		return '\\x' + hex ;
-	} ) ;
-} ;
+exports.control = ( str , keepNewLineAndTab = false ) => str.replace( /[\x00-\x1f\x7f]/g , match => {
+	if ( keepNewLineAndTab && ( match === '\n' || match === '\t' ) ) { return match ; }
+	if ( escapeControlMap[ match ] !== undefined ) { return escapeControlMap[ match ] ; }
+	var hex = match.charCodeAt( 0 ).toString( 16 ) ;
+	if ( hex.length % 2 ) { hex = '0' + hex ; }
+	return '\\x' + hex ;
+} ) ;
 
 
 
@@ -4716,19 +4883,27 @@ var escapeHtmlMap = {
 } ;
 
 // Only escape & < > so this is suited for content outside tags
-exports.html = function escapeHtml( str ) {
-	return str.replace( /[&<>]/g , ( match ) => { return escapeHtmlMap[ match ] ; } ) ;
-} ;
+exports.html = str => str.replace( /[&<>]/g , match => escapeHtmlMap[ match ] ) ;
 
 // Escape & < > " so this is suited for content inside a double-quoted attribute
-exports.htmlAttr = function escapeHtmlAttr( str ) {
-	return str.replace( /[&<>"]/g , ( match ) => { return escapeHtmlMap[ match ] ; } ) ;
-} ;
+exports.htmlAttr = str => str.replace( /[&<>"]/g , match => escapeHtmlMap[ match ] ) ;
 
 // Escape all html special characters & < > " '
-exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
-	return str.replace( /[&<>"']/g , ( match ) => { return escapeHtmlMap[ match ] ; } ) ;
-} ;
+exports.htmlSpecialChars = str => str.replace( /[&<>"']/g , match => escapeHtmlMap[ match ] ) ;
+
+// Percent-encode all control chars and codepoint greater than 255 using percent encoding
+exports.unicodePercentEncode = str => str.replace( /[\x00-\x1f\u0100-\uffff\x7f%]/g , match => {
+	try {
+		return encodeURI( match ) ;
+	}
+	catch ( error ) {
+		// encodeURI can throw on bad surrogate pairs, but we just strip those characters
+		return '' ;
+	}
+} ) ;
+
+// Encode HTTP header value
+exports.httpHeaderValue = str => exports.unicodePercentEncode( str ) ;
 
 
 },{}],19:[function(require,module,exports){
@@ -4769,10 +4944,11 @@ exports.htmlSpecialChars = function escapeHtmlSpecialChars( str ) {
 
 
 
-var inspect = require( './inspect.js' ).inspect ;
-var inspectError = require( './inspect.js' ).inspectError ;
-var escape = require( './escape.js' ) ;
-var ansi = require( './ansi.js' ) ;
+const inspect = require( './inspect.js' ).inspect ;
+const inspectError = require( './inspect.js' ).inspectError ;
+const escape = require( './escape.js' ) ;
+const ansi = require( './ansi.js' ) ;
+const unicode = require( './unicode.js' ) ;
 
 
 
@@ -4781,12 +4957,14 @@ var ansi = require( './ansi.js' ) ;
 	%s		string
 	%S		string, interpret ^ formatting
 	%r		raw string: without sanitizer
+	%n		natural: output the most natural representation for this type
+	%N		even more natural: avoid type hinting marks like bracket for array
 	%f		float
 	%e		for scientific notation
 	%d	%i	integer
 	%u		unsigned integer
 	%U		unsigned positive integer (>0)
-	%k		metric system
+	%k		number with metric system prefixes
 	%t		time duration, convert ms into H:min:s
 	%h		hexadecimal
 	%x		hexadecimal, force pair of symbols (e.g. 'f' -> '0f')
@@ -4794,6 +4972,7 @@ var ansi = require( './ansi.js' ) ;
 	%b		binary
 	%z		base64
 	%Z		base64url
+	%O		object (like inspect, but with ultra minimal options)
 	%I		call string-kit's inspect()
 	%Y		call string-kit's inspect(), but do not inspect non-enumerable
 	%E		call string-kit's inspectError()
@@ -4803,13 +4982,13 @@ var ansi = require( './ansi.js' ) ;
 	%a		argument for a function
 
 	Candidate format:
-	%A		for automatic type?
+	%A		for automatic type? probably not good: it's like %n Natural
 	%c		for char? (can receive a string or an integer translated into an UTF8 chars)
 	%C		for currency formating?
 	%B		for Buffer objects?
 */
 
-exports.formatMethod = function format( ... args ) {
+exports.formatMethod = function( ... args ) {
 	var str = args[ 0 ] ;
 
 	if ( typeof str !== 'string' ) {
@@ -4905,6 +5084,7 @@ exports.formatMethod = function format( ... args ) {
 			if ( modes[ mode ] ) {
 				replacement = modes[ mode ]( arg , modeArg , this ) ;
 				if ( this.argumentSanitizer && ! modes[ mode ].noSanitize ) { replacement = this.argumentSanitizer( replacement ) ; }
+				if ( modeArg && ! modes[ mode ].noCommonModeArg ) { replacement = commonModeArg( replacement , modeArg ) ; }
 				return replacement ;
 			}
 
@@ -4970,7 +5150,10 @@ exports.formatMethod = function format( ... args ) {
 } ;
 
 
-var modes = {} ;
+
+// --- MODES ---
+
+const modes = {} ;
 
 
 
@@ -5001,56 +5184,105 @@ modes.S = ( arg , modeArg , options ) => {
 } ;
 
 modes.S.noSanitize = true ;
+modes.S.noCommonModeArg = true ;
 
 
 
-const NUMBER_FORMAT_REGEX = /([a-zA-Z]?)(.[^a-zA-Z]*)/g ;
+// natural (WIP)
+modes.N = ( arg , isSubCall ) => {
+	if ( typeof arg === 'string' ) { return arg ; }
+
+	if ( arg === null || arg === undefined || arg === true || arg === false || typeof arg === 'number' ) {
+		return '' + arg ;
+	}
+
+	if ( Array.isArray( arg ) ) {
+		arg = arg.map( e => modes.N( e , true ) ) ;
+
+		if ( isSubCall ) {
+			return '[' + arg.join( ',' ) + ']' ;
+		}
+
+		return arg.join( ', ' ) ;
+	}
+
+	if ( Buffer.isBuffer( arg ) ) {
+		arg = [ ... arg ].map( e => {
+			e = e.toString( 16 ) ;
+			if ( e.length === 1 ) { e = '0' + e ; }
+			return e ;
+		} ) ;
+		return '<' + arg.join( ' ' ) + '>' ;
+	}
+
+	var proto = Object.getPrototypeOf( arg ) ;
+
+	if ( proto === null || proto === Object.prototype ) {
+		// Plain objects
+		arg = Object.entries( arg ).map( e => e[ 0 ] + ': ' + modes.N( e[ 1 ] , true ) ) ;
+
+		if ( isSubCall ) {
+			return '{' + arg.join( ', ' ) + '}' ;
+		}
+
+		return arg.join( ', ' ) ;
+	}
+
+	if ( typeof arg.inspect === 'function' ) { return arg.inspect() ; }
+	if ( typeof arg.toString === 'function' ) { return arg.toString() ; }
+
+	return '(' + arg + ')' ;
+} ;
+
+modes.n = arg => modes.N( arg , true ) ;
 
 
 
 // float
 modes.f = ( arg , modeArg ) => {
-	var match , k , v , lv , n ,
-		step = 0 , toFixed , toFixedIfDecimal , padding ;
+	var match , k , v , lv , n , step = 0 ,
+		toFixed , toFixedIfDecimal , padding ;
 
 	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 	if ( typeof arg !== 'number' ) { arg = 0 ; }
 
 	if ( modeArg ) {
-		NUMBER_FORMAT_REGEX.index = 0 ;
+		MODE_ARG_FORMAT_REGEX.lastIndex = 0 ;
 
-		while ( ( match = NUMBER_FORMAT_REGEX.exec( modeArg ) ) ) {
+		while ( ( match = MODE_ARG_FORMAT_REGEX.exec( modeArg ) ) ) {
 			[ , k , v ] = match ;
 
-			if ( k === 'p' ) {
+			if ( k === 'z' ) {
 				padding = + v ;
 			}
-			else if ( v[ 0 ] === '.' ) {
-				lv = v[ v.length - 1 ] ;
+			else if ( ! k ) {
+				if ( v[ 0 ] === '.' ) {
+					lv = v[ v.length - 1 ] ;
 
-				if ( lv === '!' ) {
-					n = parseInt( v.slice( 1 , -1 ) , 10 ) ;
-					step = 10 ** ( -n ) ;
-					toFixed = n ;
+					if ( lv === '!' ) {
+						n = parseInt( v.slice( 1 , -1 ) , 10 ) ;
+						step = 10 ** ( -n ) ;
+						toFixed = n ;
+					}
+					else if ( lv === '?' ) {
+						n = parseInt( v.slice( 1 , -1 ) , 10 ) ;
+						step = 10 ** ( -n ) ;
+						toFixed = n ;
+						toFixedIfDecimal = true ;
+					}
+					else {
+						n = parseInt( v.slice( 1 ) , 10 ) ;
+						step = 10 ** ( -n ) ;
+					}
 				}
-				else if ( lv === '?' ) {
-					n = parseInt( v.slice( 1 , -1 ) , 10 ) ;
-					step = 10 ** ( -n ) ;
-					toFixed = n ;
-					toFixedIfDecimal = true ;
+				else if ( v[ v.length - 1 ] === '.' ) {
+					n = parseInt( v.slice( 0 , -1 ) , 10 ) ;
+					step = 10 ** n ;
 				}
 				else {
-					n = parseInt( v.slice( 1 ) , 10 ) ;
-					step = 10 ** ( -n ) ;
+					n = parseInt( v , 10 ) ;
+					step = 10 ** ( Math.ceil( Math.log10( arg + Number.EPSILON ) + Number.EPSILON ) - n ) ;
 				}
-			}
-			else if ( v[ v.length - 1 ] === '.' ) {
-				n = parseInt( v.slice( 0 , -1 ) , 10 ) ;
-				step = 10 ** n ;
-			}
-			else {
-				n = parseInt( v , 10 ) ;
-				step = 10 ** ( Math.ceil( Math.log10( arg + Number.EPSILON ) + Number.EPSILON ) - n ) ;
 			}
 		}
 	}
@@ -5067,7 +5299,14 @@ modes.f = ( arg , modeArg ) => {
 	if ( padding ) {
 		n = arg.indexOf( '.' ) ;
 		if ( n === -1 ) { n = arg.length ; }
-		if ( n < padding ) { arg = '0'.repeat( padding - n ) + arg ; }
+		if ( arg[ 0 ] === '-' ) {
+			if ( n - 1 < padding ) {
+				arg = '-' + '0'.repeat( 1 + padding - n ) + arg.slice( 1 ) ;
+			}
+		}
+		else if ( n < padding ) {
+			arg = '0'.repeat( padding - n ) + arg ;
+		}
 	}
 
 	return arg ;
@@ -5077,13 +5316,23 @@ modes.f.noSanitize = true ;
 
 
 
-// integer
+// scientific notation
 modes.e = ( arg , modeArg ) => {
+	var match , k , v ;
+
 	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
 	if ( typeof arg !== 'number' ) { arg = 0 ; }
 
 	if ( modeArg ) {
-		return '' + arg.toExponential( parseInt( modeArg , 10 ) - 1 ) ;
+		MODE_ARG_FORMAT_REGEX.lastIndex = 0 ;
+
+		if ( ( match = MODE_ARG_FORMAT_REGEX.exec( modeArg ) ) ) {
+			[ , k , v ] = match ;
+
+			if ( ! k ) {
+				return '' + arg.toExponential( parseInt( v , 10 ) - 1 ) ;
+			}
+		}
 	}
 
 	return '' + arg.toExponential() ;
@@ -5138,6 +5387,35 @@ modes.k.noSanitize = true ;
 
 
 
+// Degree, minutes and seconds.
+// Unlike %t which receive ms, here the input is in degree.
+modes.m = arg => {
+	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
+	if ( typeof arg !== 'number' ) { return '(NaN)' ; }
+
+	var minus = '' ;
+	if ( arg < 0 ) { minus = '-' ; arg = -arg ; }
+
+	var degrees = epsilonFloor( arg ) ,
+		frac = arg - degrees ;
+
+	if ( ! frac ) { return minus + degrees + '°' ; }
+
+	var minutes = epsilonFloor( frac * 60 ) ,
+		seconds = epsilonFloor( frac * 3600 - minutes * 60 ) ;
+
+	if ( seconds ) {
+		return minus + degrees + '°' + ( '' + minutes ).padStart( 2 , '0' ) + '′' + ( '' + seconds ).padStart( 2 , '0' ) + '″' ;
+	}
+
+	return minus + degrees + '°' + ( '' + minutes ).padStart( 2 , '0' ) + '′' ;
+
+} ;
+
+modes.m.noSanitize = true ;
+
+
+
 // time duration, transform ms into H:min:s
 // Later it should format Date as well: number=duration, date object=date
 // Note that it would not replace moment.js, but it could uses it.
@@ -5150,23 +5428,17 @@ modes.t = arg => {
 
 	var min = Math.floor( s / 60 ) ;
 	s = s % 60 ;
-	if ( min < 60 ) { return min + 'min' + zeroPadding( s ) + 's' ; }
+	if ( min < 60 ) { return min + 'min' + ( '' + s ).padStart( 2 , '0' ) + 's' ; }
 
 	var h = Math.floor( min / 60 ) ;
 	min = min % 60 ;
 	//if ( h < 24 ) { return h + 'h' + zeroPadding( min ) +'min' + zeroPadding( s ) + 's' ; }
 
-	return h + 'h' + zeroPadding( min ) + 'min' + zeroPadding( s ) + 's' ;
+	return h + 'h' + ( '' + min ).padStart( 2 , '0' ) + 'min' + ( '' + s ).padStart( 2 , '0' ) + 's' ;
 } ;
 
 modes.t.noSanitize = true ;
 
-// Transform a number to a string, pad zero to the left if necessary
-function zeroPadding( n , width = 2 ) {
-	n = '' + n ;
-	if ( n.length < width ) { n = '0'.repeat( width - n.length ) + n ; }
-	return n ;
-}
 
 
 // unsigned hexadecimal
@@ -5183,7 +5455,7 @@ modes.h.noSanitize = true ;
 // unsigned hexadecimal, force pair of symboles
 modes.x = arg => {
 	if ( typeof arg === 'string' ) { arg = parseFloat( arg ) ; }
-	if ( typeof arg !== 'number' ) { return '0' ; }
+	if ( typeof arg !== 'number' ) { return '00' ; }
 
 	var value = '' + Math.max( Math.floor( arg ) , 0 ).toString( 16 ) ;
 
@@ -5237,44 +5509,43 @@ modes.Z = arg => {
 
 
 
-// inspect
-modes.I = ( arg , modeArg , options ) => {
-	var depth = 3 ;
-	if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
-	return inspect( {
-		depth: depth ,
-		style: ( options && options.color ? 'color' : 'none' )
-	} , arg ) ;
-} ;
-
+// Inspect
+const I_OPTIONS = {} ;
+modes.I = ( arg , modeArg , options ) => genericInspectMode( arg , modeArg , options , I_OPTIONS ) ;
 modes.I.noSanitize = true ;
 
 
 
-// more minimalist inspect
-modes.Y = ( arg , modeArg , options ) => {
-	var depth = 3 ;
-	if ( modeArg !== undefined ) { depth = parseInt( modeArg , 10 ) ; }
-	return inspect( {
-		depth: depth ,
-		style: ( options && options.color ? 'color' : 'none' ) ,
-		noFunc: true ,
-		enumOnly: true ,
-		noDescriptor: true ,
-		useInspect: true
-	} , arg ) ;
+// More minimalist inspect
+const Y_OPTIONS = {
+	noFunc: true ,
+	enumOnly: true ,
+	noDescriptor: true ,
+	useInspect: true
 } ;
-
+modes.Y = ( arg , modeArg , options ) => genericInspectMode( arg , modeArg , options , Y_OPTIONS ) ;
 modes.Y.noSanitize = true ;
 
 
 
-// inspect error
-modes.E = ( arg , modeArg , options ) => inspectError( { style: ( options && options.color ? 'color' : 'none' ) } , arg ) ;
+// Even more minimalist inspect
+const O_OPTIONS = { minimal: true , noIndex: true } ;
+modes.O = ( arg , modeArg , options ) => genericInspectMode( arg , modeArg , options , O_OPTIONS ) ;
+modes.O.noSanitize = true ;
+
+
+
+// Inspect error
+const E_OPTIONS = {} ;
+modes.E = ( arg , modeArg , options ) => genericInspectMode( arg , modeArg , options , E_OPTIONS , true ) ;
 modes.E.noSanitize = true ;
 
-// json
+
+
+// JSON
 modes.J = arg => arg === undefined ? 'null' : JSON.stringify( arg ) ;
+
+
 
 // drop
 modes.D = () => '' ;
@@ -5351,7 +5622,7 @@ exports.format.default = defaultFormatter ;
 
 
 
-exports.markupMethod = function markup_( str ) {
+exports.markupMethod = function( str ) {
 	if ( typeof str !== 'string' ) {
 		if ( ! str ) { str = '' ; }
 		else if ( typeof str.toString === 'function' ) { str = str.toString() ; }
@@ -5429,7 +5700,7 @@ exports.markup = exports.markupMethod.bind( defaultFormatter ) ;
 
 
 // Count the number of parameters needed for this string
-exports.format.count = function formatCount( str ) {
+exports.format.count = function( str ) {
 	var match , index , relative , autoIndex = 1 , maxIndex = 0 ;
 
 	if ( typeof str !== 'string' ) { return 0 ; }
@@ -5466,19 +5737,108 @@ exports.format.count = function formatCount( str ) {
 
 
 // Tell if this string contains formatter chars
-exports.format.hasFormatting = function hasFormatting( str ) {
+exports.format.hasFormatting = function( str ) {
 	if ( str.search( /\^(.?)|(%%)|%([+-]?)([0-9]*)(?:\[([^\]]*)\])?([a-zA-Z])/ ) !== -1 ) { return true ; }
 	return false ;
 } ;
 
 
 
+// ModeArg formats
+
+// The format for commonModeArg
+const COMMON_MODE_ARG_FORMAT_REGEX = /([a-zA-Z])(.[^a-zA-Z]*)/g ;
+
+// The format for specific mode arg
+const MODE_ARG_FORMAT_REGEX = /([a-zA-Z]|^)(.[^a-zA-Z]*)/g ;
+
+
+
+// Called when there is a modeArg and the mode allow common mode arg
+// CONVENTION: reserve upper-cased letters for common mode arg
+function commonModeArg( str , modeArg ) {
+	var match , k , v ;
+
+	COMMON_MODE_ARG_FORMAT_REGEX.lastIndex = 0 ;
+
+	while ( ( match = COMMON_MODE_ARG_FORMAT_REGEX.exec( modeArg ) ) ) {
+		[ , k , v ] = match ;
+
+		if ( k === 'L' ) {
+			let width = unicode.width( str ) ;
+			v = + v || 1 ;
+
+			if ( width > v ) {
+				str = unicode.truncateWidth( str , v - 1 ).trim() + '…' ;
+				width = unicode.width( str ) ;
+			}
+
+			if ( width < v ) { str = ' '.repeat( v - width ) + str ; }
+		}
+		else if ( k === 'R' ) {
+			let width = unicode.width( str ) ;
+			v = + v || 1 ;
+
+			if ( width > v ) {
+				str = unicode.truncateWidth( str , v - 1 ).trim() + '…' ;
+				width = unicode.width( str ) ;
+			}
+
+			if ( width < v ) { str = str + ' '.repeat( v - width ) ; }
+		}
+	}
+
+	return str ;
+}
+
+
+
+// Generic inspect
+function genericInspectMode( arg , modeArg , options , modeOptions , isInspectError = false ) {
+	var match , k , v ,
+		outputMaxLength ,
+		depth = 3 ,
+		style = options && options.color ? 'color' : 'none' ;
+
+	if ( modeArg ) {
+		MODE_ARG_FORMAT_REGEX.lastIndex = 0 ;
+
+		while ( ( match = MODE_ARG_FORMAT_REGEX.exec( modeArg ) ) ) {
+			[ , k , v ] = match ;
+
+			if ( k === 'c' ) {
+				if ( v === '+' ) { style = 'color' ; }
+				else if ( v === '-' ) { style = 'none' ; }
+			}
+			else if ( k === 'l' ) {
+				outputMaxLength = parseInt( v , 10 ) || undefined ;
+			}
+			else if ( ! k ) {
+				depth = parseInt( v , 10 ) || 1 ;
+			}
+		}
+	}
+
+	if ( isInspectError ) {
+		return inspectError( Object.assign( { depth , style , outputMaxLength } , modeOptions ) , arg ) ;
+	}
+
+	return inspect( Object.assign( { depth , style , outputMaxLength } , modeOptions ) , arg ) ;
+}
+
+
+
 // From math-kit module
+// /!\ Should be updated with the new way the math-kit module do it!!! /!\
 const EPSILON = 0.0000000001 ;
 const INVERSE_EPSILON = Math.round( 1 / EPSILON ) ;
 
 function epsilonRound( v ) {
 	return Math.round( v * INVERSE_EPSILON ) / INVERSE_EPSILON ;
+}
+
+function epsilonFloor( v ) {
+	return Math.floor( v + EPSILON ) ;
 }
 
 // Round with precision
@@ -5531,7 +5891,323 @@ function iround( v , istep ) {
 
 
 }).call(this,require("buffer").Buffer)
-},{"./ansi.js":16,"./escape.js":18,"./inspect.js":20,"buffer":40}],20:[function(require,module,exports){
+},{"./ansi.js":16,"./escape.js":18,"./inspect.js":21,"./unicode.js":30,"buffer":41}],20:[function(require,module,exports){
+/*
+	String Kit
+
+	Copyright (c) 2014 - 2019 Cédric Ronvel
+
+	The MIT License (MIT)
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+"use strict" ;
+
+
+const fuzzy = {} ;
+module.exports = fuzzy ;
+
+
+
+fuzzy.score = ( input , pattern ) => {
+	if ( input === pattern ) { return 1 ; }
+	if ( input.length === 0 || pattern.length === 0 ) { return 0 ; }
+	//return 1 - fuzzy.levenshtein( input , pattern ) / ( pattern.length >= input.length ? pattern.length : input.length ) ;
+	return Math.max( 0 , 1 - fuzzy.levenshtein( input , pattern ) / pattern.length ) ;
+} ;
+
+
+
+const DEFAULT_SCORE_LIMIT = 0 ;
+const DEFAULT_TOKEN_DISPARITY_PENALTY = 0.88 ;
+// deltaRate should be just above tokenDisparityPenalty
+const DEFAULT_DELTA_RATE = 0.9 ;
+
+
+
+fuzzy.bestMatch = ( input , patterns , options = {} ) => {
+	var bestScore = options.scoreLimit || DEFAULT_SCORE_LIMIT ,
+		i , iMax , currentScore , currentPattern ,
+		bestIndex = -1 ,
+		bestPattern = null ;
+
+	for ( i = 0 , iMax = patterns.length ; i < iMax ; i ++ ) {
+		currentPattern = patterns[ i ] ;
+		currentScore = fuzzy.score( input , currentPattern ) ;
+		if ( currentScore === 1 ) { return options.indexOf ? i : currentPattern ; }
+		if ( currentScore > bestScore ) {
+			bestScore = currentScore ;
+			bestPattern = currentPattern ;
+			bestIndex = i ;
+		}
+	}
+
+	return options.indexOf ? bestIndex : bestPattern ;
+} ;
+
+
+
+fuzzy.topMatch = ( input , patterns , options = {} ) => {
+	var scoreLimit = options.scoreLimit || DEFAULT_SCORE_LIMIT ,
+		deltaRate = options.deltaRate || DEFAULT_DELTA_RATE ,
+		i , iMax , patternScores ;
+
+	patternScores = patterns.map( ( pattern , index ) => ( { pattern , index , score: fuzzy.score( input , pattern ) } ) ) ;
+	patternScores.sort( ( a , b ) => b.score - a.score ) ;
+
+	//console.log( patternScores ) ;
+
+	if ( patternScores[ 0 ].score <= scoreLimit ) { return [] ; }
+	scoreLimit = Math.max( scoreLimit , patternScores[ 0 ].score * deltaRate ) ;
+
+	for ( i = 1 , iMax = patternScores.length ; i < iMax ; i ++ ) {
+		if ( patternScores[ i ].score < scoreLimit ) {
+			patternScores.length = i ;
+			break ;
+		}
+	}
+
+	return options.indexOf ?
+		patternScores.map( e => e.index ) :
+		patternScores.map( e => e.pattern ) ;
+} ;
+
+
+
+const englishBlackList = new Set( [
+	'a' , 'an' , 'the' , 'this' , 'that' , 'those' , 'some' ,
+	'of' , 'in' , 'on' , 'at' ,
+	'my' , 'your' , 'her' , 'his' , 'its' , 'our' , 'their'
+] ) ;
+
+function tokenize( str , blackList = englishBlackList ) {
+	return str.split( /[ '"/|,:_-]+/g ).filter( s => s && ! blackList.has( s ) ) ;
+}
+
+
+
+// This is almost the same code than .topTokenMatch(): both must be in sync
+fuzzy.bestTokenMatch = ( input , patterns , options = {} ) => {
+	var scoreLimit = options.scoreLimit || DEFAULT_SCORE_LIMIT ,
+		tokenDisparityPenalty = options.tokenDisparityPenalty || DEFAULT_TOKEN_DISPARITY_PENALTY ,
+		i , iMax , j , jMax , z , zMax ,
+		currentPattern , currentPatternTokens , currentPatternToken , currentPatternScore ,
+		bestPatternScore = scoreLimit ,
+		//currentPatternScores = [] ,
+		currentInputToken , currentScore ,
+		inputTokens = tokenize( input ) ,
+		bestScore ,
+		bestIndex = -1 ,
+		bestPattern = null ;
+
+	//console.log( inputTokens ) ;
+	if ( ! inputTokens.length || ! patterns.length ) { return options.indexOf ? bestIndex : bestPattern ; }
+
+	for ( i = 0 , iMax = patterns.length ; i < iMax ; i ++ ) {
+		currentPattern = patterns[ i ] ;
+		currentPatternTokens = tokenize( currentPattern ) ;
+		//currentPatternScores.length = 0 ;
+		currentPatternScore = 0 ;
+
+		for ( j = 0 , jMax = inputTokens.length ; j < jMax ; j ++ ) {
+			currentInputToken = inputTokens[ j ] ;
+			bestScore = 0 ;
+
+			for ( z = 0 , zMax = currentPatternTokens.length ; z < zMax ; z ++ ) {
+				currentPatternToken = currentPatternTokens[ z ] ;
+				currentScore = fuzzy.score( currentInputToken , currentPatternToken ) ;
+
+				if ( currentScore > bestScore ) {
+					bestScore = currentScore ;
+					if ( currentScore === 1 ) { break ; }
+				}
+			}
+
+			//currentPatternScores[ j ] = bestScore ;
+			currentPatternScore += bestScore ;
+		}
+
+		//currentPatternScore = Math.hypot( ... currentPatternScores ) ;
+		currentPatternScore /= inputTokens.length ;
+
+		// Apply a small penalty if there isn't enough tokens
+		if ( inputTokens.length !== currentPatternTokens.length ) {
+			currentPatternScore *= tokenDisparityPenalty ** Math.abs( currentPatternTokens.length - inputTokens.length ) ;
+		}
+
+		//console.log( currentPattern + ': ' + currentPatternScore ) ;
+		if ( currentPatternScore > bestPatternScore ) {
+			bestPatternScore = currentPatternScore ;
+			bestPattern = currentPattern ;
+			bestIndex = i ;
+		}
+	}
+
+	return options.indexOf ? bestIndex : bestPattern ;
+} ;
+
+
+
+// This is almost the same code than .bestTokenMatch(): both must be in sync
+// deltaRate should be just above tokenDisparityPenalty
+fuzzy.topTokenMatch = ( input , patterns , options = {} ) => {
+	var scoreLimit = options.scoreLimit || DEFAULT_SCORE_LIMIT ,
+		tokenDisparityPenalty = options.tokenDisparityPenalty || DEFAULT_TOKEN_DISPARITY_PENALTY ,
+		deltaRate = options.deltaRate || DEFAULT_DELTA_RATE ,
+		i , iMax , j , jMax , z , zMax ,
+		currentPattern , currentPatternTokens , currentPatternToken , currentPatternScore ,
+		currentInputToken , currentScore ,
+		inputTokens = tokenize( input ) ,
+		bestScore ,
+		patternScores = [] ;
+
+	//console.log( inputTokens ) ;
+	if ( ! inputTokens.length || ! patterns.length ) { return [] ; }
+
+	for ( i = 0 , iMax = patterns.length ; i < iMax ; i ++ ) {
+		currentPattern = patterns[ i ] ;
+		currentPatternTokens = tokenize( currentPattern ) ;
+		//currentPatternScores.length = 0 ;
+		currentPatternScore = 0 ;
+
+		for ( j = 0 , jMax = inputTokens.length ; j < jMax ; j ++ ) {
+			currentInputToken = inputTokens[ j ] ;
+			bestScore = 0 ;
+
+			for ( z = 0 , zMax = currentPatternTokens.length ; z < zMax ; z ++ ) {
+				currentPatternToken = currentPatternTokens[ z ] ;
+				currentScore = fuzzy.score( currentInputToken , currentPatternToken ) ;
+
+				if ( currentScore > bestScore ) {
+					bestScore = currentScore ;
+					if ( currentScore === 1 ) { break ; }
+				}
+			}
+
+			//currentPatternScores[ j ] = bestScore ;
+			currentPatternScore += bestScore ;
+		}
+
+		//currentPatternScore = Math.hypot( ... currentPatternScores ) ;
+		currentPatternScore /= inputTokens.length ;
+
+		// Apply a small penalty if there isn't enough tokens
+		if ( inputTokens.length !== currentPatternTokens.length ) {
+			currentPatternScore *= tokenDisparityPenalty ** Math.abs( currentPatternTokens.length - inputTokens.length ) ;
+		}
+
+		patternScores.push( { pattern: currentPattern , index: i , score: currentPatternScore } ) ;
+	}
+
+	patternScores.sort( ( a , b ) => b.score - a.score ) ;
+	//console.log( "Before truncating:" , patternScores ) ;
+
+	if ( patternScores[ 0 ].score <= scoreLimit ) { return [] ; }
+	scoreLimit = Math.max( scoreLimit , patternScores[ 0 ].score * deltaRate ) ;
+
+	for ( i = 1 , iMax = patternScores.length ; i < iMax ; i ++ ) {
+		if ( patternScores[ i ].score < scoreLimit ) {
+			patternScores.length = i ;
+			break ;
+		}
+	}
+
+	//console.log( "After truncating:" , patternScores ) ;
+
+	return options.indexOf ?
+		patternScores.map( e => e.index ) :
+		patternScores.map( e => e.pattern ) ;
+} ;
+
+
+
+// The .levenshtein() function is derivated from https://github.com/sindresorhus/leven by Sindre Sorhus (MIT License)
+const _tracker = [] ;
+const _leftCharCodeCache = [] ;
+
+fuzzy.levenshtein = ( left , right ) => {
+	if ( left === right ) { return 0 ; }
+
+	// Swapping the strings if `a` is longer than `b` so we know which one is the
+	// shortest & which one is the longest
+	if ( left.length > right.length ) {
+		let swap = left ;
+		left = right ;
+		right = swap ;
+	}
+
+	let leftLength = left.length ;
+	let rightLength = right.length ;
+
+	// Performing suffix trimming:
+	// We can linearly drop suffix common to both strings since they
+	// don't increase distance at all
+	while ( leftLength > 0 && ( left.charCodeAt( leftLength - 1 ) === right.charCodeAt( rightLength - 1 ) ) ) {
+		leftLength -- ;
+		rightLength -- ;
+	}
+
+	// Performing prefix trimming
+	// We can linearly drop prefix common to both strings since they
+	// don't increase distance at all
+	let start = 0 ;
+
+	while ( start < leftLength && ( left.charCodeAt( start ) === right.charCodeAt( start ) ) ) {
+		start ++ ;
+	}
+
+	leftLength -= start ;
+	rightLength -= start ;
+
+	if ( leftLength === 0 ) { return rightLength ; }
+
+	let rightCharCode ;
+	let result ;
+	let temp ;
+	let temp2 ;
+	let i = 0 ;
+	let j = 0 ;
+
+	while ( i < leftLength ) {
+		_leftCharCodeCache[ i ] = left.charCodeAt( start + i ) ;
+		_tracker[ i ] = ++ i ;
+	}
+
+	while ( j < rightLength ) {
+		rightCharCode = right.charCodeAt( start + j ) ;
+		temp = j ++ ;
+		result = j ;
+
+		for ( i = 0 ; i < leftLength ; i ++ ) {
+			temp2 = rightCharCode === _leftCharCodeCache[ i ] ? temp : temp + 1 ;
+			temp = _tracker[ i ] ;
+			// eslint-disable-next-line no-nested-ternary
+			result = _tracker[ i ] = temp > result   ?   temp2 > result ? result + 1 : temp2   :   temp2 > temp ? temp + 1 : temp2 ;
+		}
+	}
+
+	return result ;
+} ;
+
+
+},{}],21:[function(require,module,exports){
 (function (Buffer,process){
 /*
 	String Kit
@@ -5592,12 +6268,13 @@ const EMPTY = {} ;
 		* noFunc: do not display functions
 		* noDescriptor: do not display descriptor information
 		* noArrayProperty: do not display array properties
+		* noIndex: do not display array indexes
 		* noType: do not display type and constructor
 		* enumOnly: only display enumerable properties
 		* funcDetails: display function's details
 		* proto: display object's prototype
 		* sort: sort the keys
-		* minimal: imply noFunc: true, noDescriptor: true, noType: true, enumOnly: true, proto: false and funcDetails: false.
+		* minimal: imply noFunc: true, noDescriptor: true, noType: true, noArrayProperty: true, enumOnly: true, proto: false and funcDetails: false.
 		  Display a minimal JSON-like output
 		* protoBlackList: `Set` of blacklisted object prototype (will not recurse inside it)
 		* propertyBlackList: `Set` of blacklisted property names (will not even display it)
@@ -5628,8 +6305,8 @@ function inspect( options , variable ) {
 		options.noType = true ;
 		options.noArrayProperty = true ;
 		options.enumOnly = true ;
-		options.funcDetails = false ;
 		options.proto = false ;
+		options.funcDetails = false ;
 	}
 
 	var str = inspect_( runtime , options , variable ) ;
@@ -5680,7 +6357,7 @@ function inspect_( runtime , options , variable ) {
 				key = options.style.key( runtime.key ) + ': ' ;
 			}
 		}
-		else {
+		else if ( ! options.noIndex ) {
 			key = options.style.index( runtime.key ) ;
 		}
 
@@ -6029,7 +6706,7 @@ function inspectError( options , error ) {
 	else if ( ! options || typeof options !== 'object' ) { options = {} ; }
 
 	if ( ! ( error instanceof Error ) ) {
-		return 'inspectError: not an error -- regular variable inspection: ' + inspect( options , error ) ;
+		return "inspectError(): it's not an error, using regular variable inspection: " + inspect( options , error ) ;
 	}
 
 	if ( ! options.style ) { options.style = inspectStyle.none ; }
@@ -6047,7 +6724,7 @@ function inspectError( options , error ) {
 	if ( stack ) { str += options.style.errorStack( stack ) + '\n' ; }
 
 	if ( error.from ) {
-		str += options.style.newline + options.style.errorFromMessage( 'Error created from:' ) + options.style.newline + inspectError( options , error.from ) ;
+		str += options.style.newline + options.style.errorFromMessage( 'From error:' ) + options.style.newline + inspectError( options , error.from ) ;
 	}
 
 	return str ;
@@ -6086,9 +6763,10 @@ function inspectStack( options , stack ) {
 	else {
 		stack = stack.replace( /^[^\n]*\n/ , '' ) ;
 		stack = stack.replace(
-			/^\s*(at)\s+(?:((?:new +)?[^\s:()[\]\n]+(?:\([^)]+\))?)\s)?(?:\[as ([^\s:()[\]\n]+)\]\s)?(?:\(?([^:()[\]\n]+):([0-9]+):([0-9]+)\)?)?$/mg ,
-			( matches , at , method , as , file , line , column ) => {
+			/^\s*(at)\s+(?:(?:(async|new)\s+)?([^\s:()[\]\n]+(?:\([^)]+\))?)\s)?(?:\[as ([^\s:()[\]\n]+)\]\s)?(?:\(?([^:()[\]\n]+):([0-9]+):([0-9]+)\)?)?$/mg ,
+			( matches , at , keyword , method , as , file , line , column ) => {
 				return options.style.errorStack( '    at ' ) +
+					( keyword ? options.style.errorStackKeyword( keyword ) + ' ' : '' ) +
 					( method ? options.style.errorStackMethod( method ) + ' ' : '' ) +
 					( as ? options.style.errorStack( '[as ' ) + options.style.errorStackMethodAs( as ) + options.style.errorStack( '] ' ) : '' ) +
 					options.style.errorStack( '(' ) +
@@ -6134,6 +6812,7 @@ inspectStyle.none = {
 	errorType: inspectStyleNoop ,
 	errorMessage: inspectStyleNoop ,
 	errorStack: inspectStyleNoop ,
+	errorStackKeyword: inspectStyleNoop ,
 	errorStackMethod: inspectStyleNoop ,
 	errorStackMethodAs: inspectStyleNoop ,
 	errorStackFile: inspectStyleNoop ,
@@ -6172,6 +6851,7 @@ inspectStyle.color = Object.assign( {} , inspectStyle.none , {
 	errorType: str => ansi.red + ansi.bold + str + ansi.reset ,
 	errorMessage: str => ansi.red + ansi.italic + str + ansi.reset ,
 	errorStack: str => ansi.brightBlack + str + ansi.reset ,
+	errorStackKeyword: str => ansi.italic + ansi.bold + str + ansi.reset ,
 	errorStackMethod: str => ansi.brightYellow + str + ansi.reset ,
 	errorStackMethodAs: str => ansi.yellow + str + ansi.reset ,
 	errorStackFile: str => ansi.brightCyan + str + ansi.reset ,
@@ -6210,6 +6890,7 @@ inspectStyle.html = Object.assign( {} , inspectStyle.none , {
 	errorType: str => '<span style="color:red">' + str + '</span>' ,
 	errorMessage: str => '<span style="color:red">' + str + '</span>' ,
 	errorStack: str => '<span style="color:gray">' + str + '</span>' ,
+	errorStackKeyword: str => '<i>' + str + '</i>' ,
 	errorStackMethod: str => '<span style="color:yellow">' + str + '</span>' ,
 	errorStackMethodAs: str => '<span style="color:yellow">' + str + '</span>' ,
 	errorStackFile: str => '<span style="color:cyan">' + str + '</span>' ,
@@ -6219,10 +6900,10 @@ inspectStyle.html = Object.assign( {} , inspectStyle.none , {
 } ) ;
 
 
-}).call(this,{"isBuffer":require("../../../../../../../../opt/node.js-v10.13.0/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
-},{"../../../../../../../../opt/node.js-v10.13.0/lib/node_modules/browserify/node_modules/is-buffer/index.js":43,"./ansi.js":16,"./escape.js":18,"_process":46}],21:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../../../opt/node-v12.14.0/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
+},{"../../../../../../../../opt/node-v12.14.0/lib/node_modules/browserify/node_modules/is-buffer/index.js":43,"./ansi.js":16,"./escape.js":18,"_process":46}],22:[function(require,module,exports){
 module.exports={"߀":"0","́":""," ":" ","Ⓐ":"A","Ａ":"A","À":"A","Á":"A","Â":"A","Ầ":"A","Ấ":"A","Ẫ":"A","Ẩ":"A","Ã":"A","Ā":"A","Ă":"A","Ằ":"A","Ắ":"A","Ẵ":"A","Ẳ":"A","Ȧ":"A","Ǡ":"A","Ä":"A","Ǟ":"A","Ả":"A","Å":"A","Ǻ":"A","Ǎ":"A","Ȁ":"A","Ȃ":"A","Ạ":"A","Ậ":"A","Ặ":"A","Ḁ":"A","Ą":"A","Ⱥ":"A","Ɐ":"A","Ꜳ":"AA","Æ":"AE","Ǽ":"AE","Ǣ":"AE","Ꜵ":"AO","Ꜷ":"AU","Ꜹ":"AV","Ꜻ":"AV","Ꜽ":"AY","Ⓑ":"B","Ｂ":"B","Ḃ":"B","Ḅ":"B","Ḇ":"B","Ƀ":"B","Ɓ":"B","ｃ":"C","Ⓒ":"C","Ｃ":"C","Ꜿ":"C","Ḉ":"C","Ç":"C","Ⓓ":"D","Ｄ":"D","Ḋ":"D","Ď":"D","Ḍ":"D","Ḑ":"D","Ḓ":"D","Ḏ":"D","Đ":"D","Ɗ":"D","Ɖ":"D","ᴅ":"D","Ꝺ":"D","Ð":"Dh","Ǳ":"DZ","Ǆ":"DZ","ǲ":"Dz","ǅ":"Dz","ɛ":"E","Ⓔ":"E","Ｅ":"E","È":"E","É":"E","Ê":"E","Ề":"E","Ế":"E","Ễ":"E","Ể":"E","Ẽ":"E","Ē":"E","Ḕ":"E","Ḗ":"E","Ĕ":"E","Ė":"E","Ë":"E","Ẻ":"E","Ě":"E","Ȅ":"E","Ȇ":"E","Ẹ":"E","Ệ":"E","Ȩ":"E","Ḝ":"E","Ę":"E","Ḙ":"E","Ḛ":"E","Ɛ":"E","Ǝ":"E","ᴇ":"E","ꝼ":"F","Ⓕ":"F","Ｆ":"F","Ḟ":"F","Ƒ":"F","Ꝼ":"F","Ⓖ":"G","Ｇ":"G","Ǵ":"G","Ĝ":"G","Ḡ":"G","Ğ":"G","Ġ":"G","Ǧ":"G","Ģ":"G","Ǥ":"G","Ɠ":"G","Ꞡ":"G","Ᵹ":"G","Ꝿ":"G","ɢ":"G","Ⓗ":"H","Ｈ":"H","Ĥ":"H","Ḣ":"H","Ḧ":"H","Ȟ":"H","Ḥ":"H","Ḩ":"H","Ḫ":"H","Ħ":"H","Ⱨ":"H","Ⱶ":"H","Ɥ":"H","Ⓘ":"I","Ｉ":"I","Ì":"I","Í":"I","Î":"I","Ĩ":"I","Ī":"I","Ĭ":"I","İ":"I","Ï":"I","Ḯ":"I","Ỉ":"I","Ǐ":"I","Ȉ":"I","Ȋ":"I","Ị":"I","Į":"I","Ḭ":"I","Ɨ":"I","Ⓙ":"J","Ｊ":"J","Ĵ":"J","Ɉ":"J","ȷ":"J","Ⓚ":"K","Ｋ":"K","Ḱ":"K","Ǩ":"K","Ḳ":"K","Ķ":"K","Ḵ":"K","Ƙ":"K","Ⱪ":"K","Ꝁ":"K","Ꝃ":"K","Ꝅ":"K","Ꞣ":"K","Ⓛ":"L","Ｌ":"L","Ŀ":"L","Ĺ":"L","Ľ":"L","Ḷ":"L","Ḹ":"L","Ļ":"L","Ḽ":"L","Ḻ":"L","Ł":"L","Ƚ":"L","Ɫ":"L","Ⱡ":"L","Ꝉ":"L","Ꝇ":"L","Ꞁ":"L","Ǉ":"LJ","ǈ":"Lj","Ⓜ":"M","Ｍ":"M","Ḿ":"M","Ṁ":"M","Ṃ":"M","Ɱ":"M","Ɯ":"M","ϻ":"M","Ꞥ":"N","Ƞ":"N","Ⓝ":"N","Ｎ":"N","Ǹ":"N","Ń":"N","Ñ":"N","Ṅ":"N","Ň":"N","Ṇ":"N","Ņ":"N","Ṋ":"N","Ṉ":"N","Ɲ":"N","Ꞑ":"N","ᴎ":"N","Ǌ":"NJ","ǋ":"Nj","Ⓞ":"O","Ｏ":"O","Ò":"O","Ó":"O","Ô":"O","Ồ":"O","Ố":"O","Ỗ":"O","Ổ":"O","Õ":"O","Ṍ":"O","Ȭ":"O","Ṏ":"O","Ō":"O","Ṑ":"O","Ṓ":"O","Ŏ":"O","Ȯ":"O","Ȱ":"O","Ö":"O","Ȫ":"O","Ỏ":"O","Ő":"O","Ǒ":"O","Ȍ":"O","Ȏ":"O","Ơ":"O","Ờ":"O","Ớ":"O","Ỡ":"O","Ở":"O","Ợ":"O","Ọ":"O","Ộ":"O","Ǫ":"O","Ǭ":"O","Ø":"O","Ǿ":"O","Ɔ":"O","Ɵ":"O","Ꝋ":"O","Ꝍ":"O","Œ":"OE","Ƣ":"OI","Ꝏ":"OO","Ȣ":"OU","Ⓟ":"P","Ｐ":"P","Ṕ":"P","Ṗ":"P","Ƥ":"P","Ᵽ":"P","Ꝑ":"P","Ꝓ":"P","Ꝕ":"P","Ⓠ":"Q","Ｑ":"Q","Ꝗ":"Q","Ꝙ":"Q","Ɋ":"Q","Ⓡ":"R","Ｒ":"R","Ŕ":"R","Ṙ":"R","Ř":"R","Ȑ":"R","Ȓ":"R","Ṛ":"R","Ṝ":"R","Ŗ":"R","Ṟ":"R","Ɍ":"R","Ɽ":"R","Ꝛ":"R","Ꞧ":"R","Ꞃ":"R","Ⓢ":"S","Ｓ":"S","ẞ":"S","Ś":"S","Ṥ":"S","Ŝ":"S","Ṡ":"S","Š":"S","Ṧ":"S","Ṣ":"S","Ṩ":"S","Ș":"S","Ş":"S","Ȿ":"S","Ꞩ":"S","Ꞅ":"S","Ⓣ":"T","Ｔ":"T","Ṫ":"T","Ť":"T","Ṭ":"T","Ț":"T","Ţ":"T","Ṱ":"T","Ṯ":"T","Ŧ":"T","Ƭ":"T","Ʈ":"T","Ⱦ":"T","Ꞇ":"T","Þ":"Th","Ꜩ":"TZ","Ⓤ":"U","Ｕ":"U","Ù":"U","Ú":"U","Û":"U","Ũ":"U","Ṹ":"U","Ū":"U","Ṻ":"U","Ŭ":"U","Ü":"U","Ǜ":"U","Ǘ":"U","Ǖ":"U","Ǚ":"U","Ủ":"U","Ů":"U","Ű":"U","Ǔ":"U","Ȕ":"U","Ȗ":"U","Ư":"U","Ừ":"U","Ứ":"U","Ữ":"U","Ử":"U","Ự":"U","Ụ":"U","Ṳ":"U","Ų":"U","Ṷ":"U","Ṵ":"U","Ʉ":"U","Ⓥ":"V","Ｖ":"V","Ṽ":"V","Ṿ":"V","Ʋ":"V","Ꝟ":"V","Ʌ":"V","Ꝡ":"VY","Ⓦ":"W","Ｗ":"W","Ẁ":"W","Ẃ":"W","Ŵ":"W","Ẇ":"W","Ẅ":"W","Ẉ":"W","Ⱳ":"W","Ⓧ":"X","Ｘ":"X","Ẋ":"X","Ẍ":"X","Ⓨ":"Y","Ｙ":"Y","Ỳ":"Y","Ý":"Y","Ŷ":"Y","Ỹ":"Y","Ȳ":"Y","Ẏ":"Y","Ÿ":"Y","Ỷ":"Y","Ỵ":"Y","Ƴ":"Y","Ɏ":"Y","Ỿ":"Y","Ⓩ":"Z","Ｚ":"Z","Ź":"Z","Ẑ":"Z","Ż":"Z","Ž":"Z","Ẓ":"Z","Ẕ":"Z","Ƶ":"Z","Ȥ":"Z","Ɀ":"Z","Ⱬ":"Z","Ꝣ":"Z","ⓐ":"a","ａ":"a","ẚ":"a","à":"a","á":"a","â":"a","ầ":"a","ấ":"a","ẫ":"a","ẩ":"a","ã":"a","ā":"a","ă":"a","ằ":"a","ắ":"a","ẵ":"a","ẳ":"a","ȧ":"a","ǡ":"a","ä":"a","ǟ":"a","ả":"a","å":"a","ǻ":"a","ǎ":"a","ȁ":"a","ȃ":"a","ạ":"a","ậ":"a","ặ":"a","ḁ":"a","ą":"a","ⱥ":"a","ɐ":"a","ɑ":"a","ꜳ":"aa","æ":"ae","ǽ":"ae","ǣ":"ae","ꜵ":"ao","ꜷ":"au","ꜹ":"av","ꜻ":"av","ꜽ":"ay","ⓑ":"b","ｂ":"b","ḃ":"b","ḅ":"b","ḇ":"b","ƀ":"b","ƃ":"b","ɓ":"b","Ƃ":"b","ⓒ":"c","ć":"c","ĉ":"c","ċ":"c","č":"c","ç":"c","ḉ":"c","ƈ":"c","ȼ":"c","ꜿ":"c","ↄ":"c","C":"c","Ć":"c","Ĉ":"c","Ċ":"c","Č":"c","Ƈ":"c","Ȼ":"c","ⓓ":"d","ｄ":"d","ḋ":"d","ď":"d","ḍ":"d","ḑ":"d","ḓ":"d","ḏ":"d","đ":"d","ƌ":"d","ɖ":"d","ɗ":"d","Ƌ":"d","Ꮷ":"d","ԁ":"d","Ɦ":"d","ð":"dh","ǳ":"dz","ǆ":"dz","ⓔ":"e","ｅ":"e","è":"e","é":"e","ê":"e","ề":"e","ế":"e","ễ":"e","ể":"e","ẽ":"e","ē":"e","ḕ":"e","ḗ":"e","ĕ":"e","ė":"e","ë":"e","ẻ":"e","ě":"e","ȅ":"e","ȇ":"e","ẹ":"e","ệ":"e","ȩ":"e","ḝ":"e","ę":"e","ḙ":"e","ḛ":"e","ɇ":"e","ǝ":"e","ⓕ":"f","ｆ":"f","ḟ":"f","ƒ":"f","ﬀ":"ff","ﬁ":"fi","ﬂ":"fl","ﬃ":"ffi","ﬄ":"ffl","ⓖ":"g","ｇ":"g","ǵ":"g","ĝ":"g","ḡ":"g","ğ":"g","ġ":"g","ǧ":"g","ģ":"g","ǥ":"g","ɠ":"g","ꞡ":"g","ꝿ":"g","ᵹ":"g","ⓗ":"h","ｈ":"h","ĥ":"h","ḣ":"h","ḧ":"h","ȟ":"h","ḥ":"h","ḩ":"h","ḫ":"h","ẖ":"h","ħ":"h","ⱨ":"h","ⱶ":"h","ɥ":"h","ƕ":"hv","ⓘ":"i","ｉ":"i","ì":"i","í":"i","î":"i","ĩ":"i","ī":"i","ĭ":"i","ï":"i","ḯ":"i","ỉ":"i","ǐ":"i","ȉ":"i","ȋ":"i","ị":"i","į":"i","ḭ":"i","ɨ":"i","ı":"i","ⓙ":"j","ｊ":"j","ĵ":"j","ǰ":"j","ɉ":"j","ⓚ":"k","ｋ":"k","ḱ":"k","ǩ":"k","ḳ":"k","ķ":"k","ḵ":"k","ƙ":"k","ⱪ":"k","ꝁ":"k","ꝃ":"k","ꝅ":"k","ꞣ":"k","ⓛ":"l","ｌ":"l","ŀ":"l","ĺ":"l","ľ":"l","ḷ":"l","ḹ":"l","ļ":"l","ḽ":"l","ḻ":"l","ſ":"l","ł":"l","ƚ":"l","ɫ":"l","ⱡ":"l","ꝉ":"l","ꞁ":"l","ꝇ":"l","ɭ":"l","ǉ":"lj","ⓜ":"m","ｍ":"m","ḿ":"m","ṁ":"m","ṃ":"m","ɱ":"m","ɯ":"m","ⓝ":"n","ｎ":"n","ǹ":"n","ń":"n","ñ":"n","ṅ":"n","ň":"n","ṇ":"n","ņ":"n","ṋ":"n","ṉ":"n","ƞ":"n","ɲ":"n","ŉ":"n","ꞑ":"n","ꞥ":"n","ԉ":"n","ǌ":"nj","ⓞ":"o","ｏ":"o","ò":"o","ó":"o","ô":"o","ồ":"o","ố":"o","ỗ":"o","ổ":"o","õ":"o","ṍ":"o","ȭ":"o","ṏ":"o","ō":"o","ṑ":"o","ṓ":"o","ŏ":"o","ȯ":"o","ȱ":"o","ö":"o","ȫ":"o","ỏ":"o","ő":"o","ǒ":"o","ȍ":"o","ȏ":"o","ơ":"o","ờ":"o","ớ":"o","ỡ":"o","ở":"o","ợ":"o","ọ":"o","ộ":"o","ǫ":"o","ǭ":"o","ø":"o","ǿ":"o","ꝋ":"o","ꝍ":"o","ɵ":"o","ɔ":"o","ᴑ":"o","œ":"oe","ƣ":"oi","ꝏ":"oo","ȣ":"ou","ⓟ":"p","ｐ":"p","ṕ":"p","ṗ":"p","ƥ":"p","ᵽ":"p","ꝑ":"p","ꝓ":"p","ꝕ":"p","ρ":"p","ⓠ":"q","ｑ":"q","ɋ":"q","ꝗ":"q","ꝙ":"q","ⓡ":"r","ｒ":"r","ŕ":"r","ṙ":"r","ř":"r","ȑ":"r","ȓ":"r","ṛ":"r","ṝ":"r","ŗ":"r","ṟ":"r","ɍ":"r","ɽ":"r","ꝛ":"r","ꞧ":"r","ꞃ":"r","ⓢ":"s","ｓ":"s","ś":"s","ṥ":"s","ŝ":"s","ṡ":"s","š":"s","ṧ":"s","ṣ":"s","ṩ":"s","ș":"s","ş":"s","ȿ":"s","ꞩ":"s","ꞅ":"s","ẛ":"s","ʂ":"s","ß":"ss","ⓣ":"t","ｔ":"t","ṫ":"t","ẗ":"t","ť":"t","ṭ":"t","ț":"t","ţ":"t","ṱ":"t","ṯ":"t","ŧ":"t","ƭ":"t","ʈ":"t","ⱦ":"t","ꞇ":"t","þ":"th","ꜩ":"tz","ⓤ":"u","ｕ":"u","ù":"u","ú":"u","û":"u","ũ":"u","ṹ":"u","ū":"u","ṻ":"u","ŭ":"u","ü":"u","ǜ":"u","ǘ":"u","ǖ":"u","ǚ":"u","ủ":"u","ů":"u","ű":"u","ǔ":"u","ȕ":"u","ȗ":"u","ư":"u","ừ":"u","ứ":"u","ữ":"u","ử":"u","ự":"u","ụ":"u","ṳ":"u","ų":"u","ṷ":"u","ṵ":"u","ʉ":"u","ⓥ":"v","ｖ":"v","ṽ":"v","ṿ":"v","ʋ":"v","ꝟ":"v","ʌ":"v","ꝡ":"vy","ⓦ":"w","ｗ":"w","ẁ":"w","ẃ":"w","ŵ":"w","ẇ":"w","ẅ":"w","ẘ":"w","ẉ":"w","ⱳ":"w","ⓧ":"x","ｘ":"x","ẋ":"x","ẍ":"x","ⓨ":"y","ｙ":"y","ỳ":"y","ý":"y","ŷ":"y","ỹ":"y","ȳ":"y","ẏ":"y","ÿ":"y","ỷ":"y","ẙ":"y","ỵ":"y","ƴ":"y","ɏ":"y","ỿ":"y","ⓩ":"z","ｚ":"z","ź":"z","ẑ":"z","ż":"z","ž":"z","ẓ":"z","ẕ":"z","ƶ":"z","ȥ":"z","ɀ":"z","ⱬ":"z","ꝣ":"z"}
-},{}],22:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6261,7 +6942,7 @@ module.exports = function( str ) {
 
 
 
-},{"./latinize-map.json":21}],23:[function(require,module,exports){
+},{"./latinize-map.json":22}],24:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6292,7 +6973,7 @@ module.exports = function( str ) {
 
 
 
-exports.resize = function resize( str , length ) {
+exports.resize = function( str , length ) {
 	if ( str.length === length ) {
 		return str ;
 	}
@@ -6306,22 +6987,22 @@ exports.resize = function resize( str , length ) {
 
 
 
-exports.occurenceCount = function occurenceCount( str , subStr ) {
+exports.occurrenceCount = function( str , subStr , overlap = false ) {
 	if ( ! str || ! subStr ) { return 0 ; }
 
-	var count = 0 , index = 0 ;
+	var count = 0 , index = 0 ,
+		inc = overlap ? 1 : subStr.length ;
 
 	while ( ( index = str.indexOf( subStr , index ) ) !== -1 ) {
 		count ++ ;
-		index += subStr.length ;
+		index += inc ;
 	}
 
 	return count ;
 } ;
 
 
-
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 /*
 	HTTP Requester
 
@@ -6407,7 +7088,7 @@ module.exports = function( a , b ) {
 } ;
 
 
-},{}],25:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6489,7 +7170,7 @@ polyfill.repeat = function( count ) {
 
 
 
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6546,7 +7227,7 @@ exports.regexp.array2alternatives = function array2alternatives( array ) {
 
 
 
-},{"./escape.js":18}],27:[function(require,module,exports){
+},{"./escape.js":18}],28:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6618,7 +7299,8 @@ Object.assign( stringKit ,
 		latinize: require( './latinize.js' ) ,
 		toTitleCase: require( './toTitleCase.js' ) ,
 		wordwrap: require( './wordwrap.js' ) ,
-		naturalSort: require( './naturalSort.js' )
+		naturalSort: require( './naturalSort.js' ) ,
+		fuzzy: require( './fuzzy.js' )
 	}
 ) ;
 
@@ -6636,7 +7318,7 @@ stringKit.installPolyfills = function installPolyfills() {
 } ;
 
 
-},{"./ansi.js":16,"./camel.js":17,"./escape.js":18,"./format.js":19,"./inspect.js":20,"./latinize.js":22,"./misc.js":23,"./naturalSort.js":24,"./polyfill.js":25,"./regexp.js":26,"./toTitleCase.js":28,"./unicode.js":29,"./wordwrap.js":30}],28:[function(require,module,exports){
+},{"./ansi.js":16,"./camel.js":17,"./escape.js":18,"./format.js":19,"./fuzzy.js":20,"./inspect.js":21,"./latinize.js":23,"./misc.js":24,"./naturalSort.js":25,"./polyfill.js":26,"./regexp.js":27,"./toTitleCase.js":29,"./unicode.js":30,"./wordwrap.js":31}],29:[function(require,module,exports){
 /*
 	String Kit
 
@@ -6690,7 +7372,7 @@ module.exports = function toTitleCase( str , options ) {
 
 
 
-},{}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 /*
 	String Kit
 
@@ -7091,7 +7773,7 @@ unicode.toFullWidth = str => {
 } ;
 
 
-},{}],30:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 /*
 	String Kit
 
@@ -7122,7 +7804,7 @@ unicode.toFullWidth = str => {
 
 
 
-var unicode = require( './unicode.js' ) ;
+const unicode = require( './unicode.js' ) ;
 
 
 
@@ -7177,11 +7859,11 @@ module.exports = function wordwrap( str , options ) {
 	if ( options.regroupFn ) {
 		strArray = options.regroupFn( strArray ) ;
 		// If char are grouped, use unicode.width() as a default
-		charWidthFn = options.widthFn || unicode.width ;
+		charWidthFn = options.charWidthFn || unicode.width ;
 	}
 	else {
 		// If char are not grouped, use unicode.charWidth() as a default
-		charWidthFn = options.widthFn || unicode.charWidth ;
+		charWidthFn = options.charWidthFn || unicode.charWidth ;
 	}
 
 	length = strArray.length ;
@@ -7295,12 +7977,11 @@ module.exports = function wordwrap( str , options ) {
 } ;
 
 
-
-},{"./unicode.js":29}],31:[function(require,module,exports){
+},{"./unicode.js":30}],32:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -7331,18 +8012,25 @@ module.exports = function wordwrap( str , options ) {
 	Stand-alone fork of extend.js, without options.
 */
 
-module.exports = function clone( originalObject , circular ) {
+function clone( originalObject , circular ) {
 	// First create an empty object with
 	// same prototype of our original source
 
-	var propertyIndex , descriptor , keys , current , nextSource , indexOf ,
+	var originalProto = Object.getPrototypeOf( originalObject ) ;
+
+	// Opaque objects, like Date
+	if ( clone.opaque.has( originalProto ) ) { return clone.opaque.get( originalProto )( originalObject ) ; }
+
+	var propertyIndex , descriptor , keys , current , nextSource , proto ,
 		copies = [ {
 			source: originalObject ,
-			target: Array.isArray( originalObject ) ? [] : Object.create( Object.getPrototypeOf( originalObject ) )
+			target: Array.isArray( originalObject ) ? [] : Object.create( originalProto )
 		} ] ,
 		cloneObject = copies[ 0 ].target ,
-		sourceReferences = [ originalObject ] ,
-		targetReferences = [ cloneObject ] ;
+		refMap = new Map() ;
+
+	refMap.set( originalObject , cloneObject ) ;
+
 
 	// First in, first out
 	while ( ( current = copies.shift() ) ) {
@@ -7352,42 +8040,57 @@ module.exports = function clone( originalObject , circular ) {
 			// Save the source's descriptor
 			descriptor = Object.getOwnPropertyDescriptor( current.source , keys[ propertyIndex ] ) ;
 
+
 			if ( ! descriptor.value || typeof descriptor.value !== 'object' ) {
 				Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
 				continue ;
 			}
 
 			nextSource = descriptor.value ;
-			descriptor.value = Array.isArray( nextSource ) ? [] : Object.create( Object.getPrototypeOf( nextSource ) ) ;
 
 			if ( circular ) {
-				indexOf = sourceReferences.indexOf( nextSource ) ;
-
-				if ( indexOf !== -1 ) {
+				if ( refMap.has( nextSource ) ) {
 					// The source is already referenced, just assign reference
-					descriptor.value = targetReferences[ indexOf ] ;
+					descriptor.value = refMap.get( nextSource ) ;
 					Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
 					continue ;
 				}
-
-				sourceReferences.push( nextSource ) ;
-				targetReferences.push( descriptor.value ) ;
 			}
 
-			Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
+			proto = Object.getPrototypeOf( descriptor.value ) ;
 
+			// Opaque objects, like Date, not recursivity for them
+			if ( clone.opaque.has( proto ) ) {
+				descriptor.value = clone.opaque.get( proto )( descriptor.value ) ;
+				Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
+				continue ;
+			}
+
+			descriptor.value = Array.isArray( nextSource ) ? [] : Object.create( proto ) ;
+
+			if ( circular ) { refMap.set( nextSource , descriptor.value ) ; }
+
+			Object.defineProperty( current.target , keys[ propertyIndex ] , descriptor ) ;
 			copies.push( { source: nextSource , target: descriptor.value } ) ;
 		}
 	}
 
 	return cloneObject ;
-} ;
+}
 
-},{}],32:[function(require,module,exports){
+module.exports = clone ;
+
+
+
+clone.opaque = new Map() ;
+clone.opaque.set( Date.prototype , src => new Date( src ) ) ;
+
+
+},{}],33:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -7463,7 +8166,7 @@ function diff( left , right , options ) {
 		keyPath = options.path + options.pathSeparator + key ;
 		//console.log( 'L keyPath:' , keyPath ) ;
 
-		if ( ! right.hasOwnProperty( key ) ) {
+		if ( ! Object.prototype.hasOwnProperty.call( right , key ) ) {
 			diffObject[ keyPath ] = { path: keyPath , message: 'does not exist in right-hand side' } ;
 			continue ;
 		}
@@ -7527,7 +8230,7 @@ function diff( left , right , options ) {
 		keyPath = options.path + options.pathSeparator + key ;
 		//console.log( 'R keyPath:' , keyPath ) ;
 
-		if ( ! left.hasOwnProperty( key ) ) {
+		if ( ! Object.prototype.hasOwnProperty.call( left , key ) ) {
 			diffObject[ keyPath ] = { path: keyPath , message: 'does not exist in left-hand side' } ;
 			continue ;
 		}
@@ -7539,11 +8242,11 @@ function diff( left , right , options ) {
 exports.diff = diff ;
 
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -7841,11 +8544,11 @@ dotPath.prepend = function( object , path , value ) {
 } ;
 
 
-},{}],34:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -8096,7 +8799,7 @@ function extendOne( runtime , options , target , source ) {
 					continue ;
 				}
 
-				if ( ! targetPointer[ targetKey ] || ! targetPointer.hasOwnProperty( targetKey ) || ( typeof targetPointer[ targetKey ] !== 'object' && typeof targetPointer[ targetKey ] !== 'function' ) ) {
+				if ( ! targetPointer[ targetKey ] || ! Object.prototype.hasOwnProperty.call( targetPointer , targetKey ) || ( typeof targetPointer[ targetKey ] !== 'object' && typeof targetPointer[ targetKey ] !== 'function' ) ) {
 					if ( Array.isArray( sourceValue ) ) { value = [] ; }
 					else if ( options.proto ) { value = Object.create( sourceValueProto ) ; }	// jshint ignore:line
 					else if ( options.inherit ) { value = Object.create( sourceValue ) ; }
@@ -8148,11 +8851,11 @@ function extendOne( runtime , options , target , source ) {
 }
 
 
-},{}],35:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -8203,11 +8906,11 @@ exports.defineLazyProperty = function defineLazyProperty( object , name , func )
 	} ) ;
 } ;
 
-},{}],36:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -8234,7 +8937,6 @@ exports.defineLazyProperty = function defineLazyProperty( object , name , func )
 
 
 
-// Load modules
 var tree = require( './tree.js' ) ;
 var util = require( 'util' ) ;
 
@@ -8393,7 +9095,7 @@ masklib.Mask.prototype.applyTo = function applyTo( input , context , contextOver
 		if ( maskValue !== null && typeof maskValue === 'object' ) {
 			//console.log( 'sub' ) ;
 
-			if ( input.hasOwnProperty( key ) && input[ key ] !== null && typeof input[ key ] === 'object' ) {
+			if ( Object.prototype.hasOwnProperty.call( input , key ) && input[ key ] !== null && typeof input[ key ] === 'object' ) {
 				//console.log( 'recursive call' ) ;
 
 				if ( input.key instanceof masklib.Mask ) {
@@ -8410,7 +9112,7 @@ masklib.Mask.prototype.applyTo = function applyTo( input , context , contextOver
 			}
 		}
 		// If mask exists, add the key
-		else if ( input.hasOwnProperty( key ) ) {
+		else if ( Object.prototype.hasOwnProperty.call( input , key ) ) {
 			//console.log( 'property found' ) ;
 
 			if ( maskValue !== undefined && typeof context.options.leaf === 'function' ) {
@@ -8555,7 +9257,7 @@ masklib.InverseMask.prototype.applyTo = function applyTo( input , context , cont
 		if ( maskValue !== null && typeof maskValue === 'object' ) {
 			//console.log( 'sub' ) ;
 
-			if ( input.hasOwnProperty( key ) && input[ key ] !== null && typeof input[ key ] === 'object' ) {
+			if ( Object.prototype.hasOwnProperty.call( input , key ) && input[ key ] !== null && typeof input[ key ] === 'object' ) {
 				//console.log( 'recursive call' ) ;
 
 				if ( input.key instanceof masklib.Mask ) {
@@ -8567,7 +9269,7 @@ masklib.InverseMask.prototype.applyTo = function applyTo( input , context , cont
 			}
 		}
 		// If mask exists, remove the key
-		else if ( input.hasOwnProperty( key ) ) {
+		else if ( Object.prototype.hasOwnProperty.call( input , key ) ) {
 			delete output[ key ] ;
 		}
 	}
@@ -8575,11 +9277,11 @@ masklib.InverseMask.prototype.applyTo = function applyTo( input , context , cont
 	return output ;
 } ;
 
-},{"./tree.js":38,"util":49}],37:[function(require,module,exports){
+},{"./tree.js":39,"util":50}],38:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -8864,11 +9566,11 @@ treePath.upgrade = function upgrade( object ) {
 } ;
 
 
-},{}],38:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 /*
 	Tree Kit
 
-	Copyright (c) 2014 - 2018 Cédric Ronvel
+	Copyright (c) 2014 - 2019 Cédric Ronvel
 
 	The MIT License (MIT)
 
@@ -8912,7 +9614,7 @@ Object.assign( tree ,
 ) ;
 
 
-},{"./clone.js":31,"./diff.js":32,"./dotPath.js":33,"./extend.js":34,"./lazy.js":35,"./mask.js":36,"./path.js":37}],39:[function(require,module,exports){
+},{"./clone.js":32,"./diff.js":33,"./dotPath.js":34,"./extend.js":35,"./lazy.js":36,"./mask.js":37,"./path.js":38}],40:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -8980,7 +9682,8 @@ function toByteArray (b64) {
     ? validLen - 4
     : validLen
 
-  for (var i = 0; i < len; i += 4) {
+  var i
+  for (i = 0; i < len; i += 4) {
     tmp =
       (revLookup[b64.charCodeAt(i)] << 18) |
       (revLookup[b64.charCodeAt(i + 1)] << 12) |
@@ -9065,7 +9768,8 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
+(function (Buffer){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -9078,6 +9782,10 @@ function fromByteArray (uint8) {
 
 var base64 = require('base64-js')
 var ieee754 = require('ieee754')
+var customInspectSymbol =
+  (typeof Symbol === 'function' && typeof Symbol.for === 'function')
+    ? Symbol.for('nodejs.util.inspect.custom')
+    : null
 
 exports.Buffer = Buffer
 exports.SlowBuffer = SlowBuffer
@@ -9114,7 +9822,9 @@ function typedArraySupport () {
   // Can typed array instances can be augmented?
   try {
     var arr = new Uint8Array(1)
-    arr.__proto__ = { __proto__: Uint8Array.prototype, foo: function () { return 42 } }
+    var proto = { foo: function () { return 42 } }
+    Object.setPrototypeOf(proto, Uint8Array.prototype)
+    Object.setPrototypeOf(arr, proto)
     return arr.foo() === 42
   } catch (e) {
     return false
@@ -9143,7 +9853,7 @@ function createBuffer (length) {
   }
   // Return an augmented `Uint8Array` instance
   var buf = new Uint8Array(length)
-  buf.__proto__ = Buffer.prototype
+  Object.setPrototypeOf(buf, Buffer.prototype)
   return buf
 }
 
@@ -9193,7 +9903,7 @@ function from (value, encodingOrOffset, length) {
   }
 
   if (value == null) {
-    throw TypeError(
+    throw new TypeError(
       'The first argument must be one of type string, Buffer, ArrayBuffer, Array, ' +
       'or Array-like Object. Received type ' + (typeof value)
     )
@@ -9245,8 +9955,8 @@ Buffer.from = function (value, encodingOrOffset, length) {
 
 // Note: Change prototype *after* Buffer.from is defined to workaround Chrome bug:
 // https://github.com/feross/buffer/pull/148
-Buffer.prototype.__proto__ = Uint8Array.prototype
-Buffer.__proto__ = Uint8Array
+Object.setPrototypeOf(Buffer.prototype, Uint8Array.prototype)
+Object.setPrototypeOf(Buffer, Uint8Array)
 
 function assertSize (size) {
   if (typeof size !== 'number') {
@@ -9350,7 +10060,8 @@ function fromArrayBuffer (array, byteOffset, length) {
   }
 
   // Return an augmented `Uint8Array` instance
-  buf.__proto__ = Buffer.prototype
+  Object.setPrototypeOf(buf, Buffer.prototype)
+
   return buf
 }
 
@@ -9672,6 +10383,9 @@ Buffer.prototype.inspect = function inspect () {
   if (this.length > max) str += ' ... '
   return '<Buffer ' + str + '>'
 }
+if (customInspectSymbol) {
+  Buffer.prototype[customInspectSymbol] = Buffer.prototype.inspect
+}
 
 Buffer.prototype.compare = function compare (target, start, end, thisStart, thisEnd) {
   if (isInstance(target, Uint8Array)) {
@@ -9797,7 +10511,7 @@ function bidirectionalIndexOf (buffer, val, byteOffset, encoding, dir) {
         return Uint8Array.prototype.lastIndexOf.call(buffer, val, byteOffset)
       }
     }
-    return arrayIndexOf(buffer, [ val ], byteOffset, encoding, dir)
+    return arrayIndexOf(buffer, [val], byteOffset, encoding, dir)
   }
 
   throw new TypeError('val must be string, number or Buffer')
@@ -10126,7 +10840,7 @@ function hexSlice (buf, start, end) {
 
   var out = ''
   for (var i = start; i < end; ++i) {
-    out += toHex(buf[i])
+    out += hexSliceLookupTable[buf[i]]
   }
   return out
 }
@@ -10163,7 +10877,8 @@ Buffer.prototype.slice = function slice (start, end) {
 
   var newBuf = this.subarray(start, end)
   // Return an augmented `Uint8Array` instance
-  newBuf.__proto__ = Buffer.prototype
+  Object.setPrototypeOf(newBuf, Buffer.prototype)
+
   return newBuf
 }
 
@@ -10652,6 +11367,8 @@ Buffer.prototype.fill = function fill (val, start, end, encoding) {
     }
   } else if (typeof val === 'number') {
     val = val & 255
+  } else if (typeof val === 'boolean') {
+    val = Number(val)
   }
 
   // Invalid ranges are not set to a default, so can range check early.
@@ -10707,11 +11424,6 @@ function base64clean (str) {
     str = str + '='
   }
   return str
-}
-
-function toHex (n) {
-  if (n < 16) return '0' + n.toString(16)
-  return n.toString(16)
 }
 
 function utf8ToBytes (string, units) {
@@ -10844,7 +11556,22 @@ function numberIsNaN (obj) {
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":39,"ieee754":41}],41:[function(require,module,exports){
+// Create lookup table for `toString('hex')`
+// See: https://github.com/feross/buffer/issues/219
+var hexSliceLookupTable = (function () {
+  var alphabet = '0123456789abcdef'
+  var table = new Array(256)
+  for (var i = 0; i < 16; ++i) {
+    var i16 = i * 16
+    for (var j = 0; j < 16; ++j) {
+      table[i16 + j] = alphabet[i] + alphabet[j]
+    }
+  }
+  return table
+})()
+
+}).call(this,require("buffer").Buffer)
+},{"base64-js":40,"buffer":41,"ieee754":42}],42:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = (nBytes * 8) - mLen - 1
@@ -10928,31 +11655,6 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
 
   buffer[offset + i - d] |= s * 128
-}
-
-},{}],42:[function(require,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    ctor.prototype = Object.create(superCtor.prototype, {
-      constructor: {
-        value: ctor,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      }
-    });
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    var TempCtor = function () {}
-    TempCtor.prototype = superCtor.prototype
-    ctor.prototype = new TempCtor()
-    ctor.prototype.constructor = ctor
-  }
 }
 
 },{}],43:[function(require,module,exports){
@@ -11601,13 +12303,38 @@ exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate :
 };
 }).call(this,require("timers").setImmediate,require("timers").clearImmediate)
 },{"process/browser.js":46,"timers":47}],48:[function(require,module,exports){
+if (typeof Object.create === 'function') {
+  // implementation from standard node.js 'util' module
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    ctor.prototype = Object.create(superCtor.prototype, {
+      constructor: {
+        value: ctor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+      }
+    });
+  };
+} else {
+  // old school shim for old browsers
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    var TempCtor = function () {}
+    TempCtor.prototype = superCtor.prototype
+    ctor.prototype = new TempCtor()
+    ctor.prototype.constructor = ctor
+  }
+}
+
+},{}],49:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],49:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -12197,5 +12924,5 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":48,"_process":46,"inherits":42}]},{},[2])(2)
+},{"./support/isBuffer":49,"_process":46,"inherits":48}]},{},[2])(2)
 });
