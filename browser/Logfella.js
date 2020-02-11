@@ -692,7 +692,7 @@ else {
 			logger.info( domain , 'The process is exiting with code %i...' , code ) ;
 		} ) ;
 
-		process.on( 'uncaughtException' , ( error ) => {
+		process.on( 'uncaughtException' , error => {
 			if ( process.listenerCount( 'uncaughtException' ) <= 1 ) {
 				// We are on our own
 				logger.fatal( domain , 'Uncaught exception: %E' , error ).then( () => {
@@ -704,6 +704,10 @@ else {
 				// Another handler should have done something about that failure
 				logger.fatal( domain , 'Uncaught exception: %E' , error ) ;
 			}
+		} ) ;
+
+		process.on( 'unhandledRejection' , error => {
+			logger.fatal( domain , 'Unhandled promise rejection: %E\n^rUnhandled rejection are ^R^+DEPRECATED^:^r and will end the Node.js process in the future!' , error ) ;
 		} ) ;
 
 		process.on( 'SIGINT' , () => {
@@ -5521,7 +5525,8 @@ const Y_OPTIONS = {
 	noFunc: true ,
 	enumOnly: true ,
 	noDescriptor: true ,
-	useInspect: true
+	useInspect: true ,
+	useInspectPropertyBlackList: true
 } ;
 modes.Y = ( arg , modeArg , options ) => genericInspectMode( arg , modeArg , options , Y_OPTIONS ) ;
 modes.Y.noSanitize = true ;
@@ -5797,6 +5802,7 @@ function commonModeArg( str , modeArg ) {
 function genericInspectMode( arg , modeArg , options , modeOptions , isInspectError = false ) {
 	var match , k , v ,
 		outputMaxLength ,
+		maxLength ,
 		depth = 3 ,
 		style = options && options.color ? 'color' : 'none' ;
 
@@ -5811,7 +5817,12 @@ function genericInspectMode( arg , modeArg , options , modeOptions , isInspectEr
 				else if ( v === '-' ) { style = 'none' ; }
 			}
 			else if ( k === 'l' ) {
+				// total output max length
 				outputMaxLength = parseInt( v , 10 ) || undefined ;
+			}
+			else if ( k === 's' ) {
+				// string max length
+				maxLength = parseInt( v , 10 ) || undefined ;
 			}
 			else if ( ! k ) {
 				depth = parseInt( v , 10 ) || 1 ;
@@ -5820,10 +5831,14 @@ function genericInspectMode( arg , modeArg , options , modeOptions , isInspectEr
 	}
 
 	if ( isInspectError ) {
-		return inspectError( Object.assign( { depth , style , outputMaxLength } , modeOptions ) , arg ) ;
+		return inspectError( Object.assign( {
+			depth , style , outputMaxLength , maxLength
+		} , modeOptions ) , arg ) ;
 	}
 
-	return inspect( Object.assign( { depth , style , outputMaxLength } , modeOptions ) , arg ) ;
+	return inspect( Object.assign( {
+		depth , style , outputMaxLength , maxLength
+	} , modeOptions ) , arg ) ;
 }
 
 
@@ -6239,8 +6254,6 @@ fuzzy.levenshtein = ( left , right ) => {
 	Variable inspector.
 */
 
-
-
 "use strict" ;
 
 
@@ -6279,6 +6292,8 @@ const EMPTY = {} ;
 		* protoBlackList: `Set` of blacklisted object prototype (will not recurse inside it)
 		* propertyBlackList: `Set` of blacklisted property names (will not even display it)
 		* useInspect: use .inspect() method when available on an object (default to false)
+		* useInspectPropertyBlackList: if set and if the object to be inspected has an 'inspectPropertyBlackList' property which value is a `Set`,
+		  use it like the 'propertyBlackList' option
 */
 
 function inspect( options , variable ) {
@@ -6490,7 +6505,10 @@ function inspect_( runtime , options , variable ) {
 			nextAncestors.push( variable ) ;
 
 			for ( i = 0 ; i < propertyList.length && str.length < options.outputMaxLength ; i ++ ) {
-				if ( ! isArray && options.propertyBlackList && options.propertyBlackList.has( propertyList[ i ] ) ) {
+				if ( ! isArray && (
+					( options.propertyBlackList && options.propertyBlackList.has( propertyList[ i ] ) )
+					|| ( options.useInspectPropertyBlackList && ( variable.inspectPropertyBlackList instanceof Set ) && variable.inspectPropertyBlackList.has( propertyList[ i ] ) )
+				) ) {
 					//str += options.style.limit( '[skip]' ) + options.style.newline ;
 					continue ;
 				}

@@ -1,4 +1,10 @@
 
+v1.3.7
+------
+
+.installExitHandler() now catch unhandled rejection
+
+
 v1.3.6
 ------
 
