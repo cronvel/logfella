@@ -320,7 +320,7 @@ Logfella.prototype.setDomainConfig = function( domain , config ) {
 // log( level , domain , [code|meta] , formatedMessage , [arg1] , [arg2] , ... )
 Logfella.prototype.log = function( level , ... args ) {
 	var formatCount , formatedMessage , formatedMessageIndex , type , o , monModifier , perDomain ,
-		levelName , domain , meta , code , messageData , isFormat , stack ,
+		levelName , domain , meta , code , hookData , messageData , isFormat , stack ,
 		cache = null ;
 
 	if ( typeof level === 'number' ) {
@@ -378,6 +378,12 @@ Logfella.prototype.log = function( level , ... args ) {
 			if ( 'mon' in meta ) {
 				monModifier = meta.mon ;
 				delete meta.mon ;
+			}
+
+			// Extract the 'hookData' property, if any...
+			if ( 'hookData' in meta ) {
+				hookData = meta.hookData ;
+				delete meta.hookData ;
 			}
 
 			formatedMessageIndex ++ ;
@@ -461,6 +467,7 @@ Logfella.prototype.log = function( level , ... args ) {
 		messageData ,
 		isFormat ,
 		stack ,
+		hookData ,
 		app: this.app ,
 		time: new Date() ,
 		uptime: process.uptime() ,
