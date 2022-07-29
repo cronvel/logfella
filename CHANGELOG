@@ -1,4 +1,10 @@
 
+v1.3.15
+-------
+
+String-kit dependencies: better support for non-Error as argument for %E
+
+
 v1.3.14
 -------
 
