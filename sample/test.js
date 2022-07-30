@@ -31,7 +31,7 @@ Logfella.global.configure( {
 	transports: [
 		{ type: 'console' , output: 'stdout' } ,
 		{ type: 'file' , path: 'log/error.log' } ,
-		{ type: 'scatteredFiles' , path: 'log' } ,
+		{ type: 'scatteredFiles' , path: 'log/scattered' } ,
 		{ type: 'netServer' } ,
 //		{ type: 'console' , output: 'stderr' }
 	]
@@ -42,3 +42,4 @@ setInterval( () => {
 	log.fatal( "Fatal error: %E" , new Error( "Fatal error!" ) ) ;
 	//log.trace( "Trace!" ) ;
 } , 1500 ) ;
+

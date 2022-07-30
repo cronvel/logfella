@@ -1,4 +1,10 @@
 
+v1.3.16
+-------
+
+Now File and ScatteredFiles transports ensures that the directory path is paved
+
+
 v1.3.15
 -------
 
