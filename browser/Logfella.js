@@ -322,6 +322,8 @@ Logfella.prototype.log = function( level , ... args ) {
 	var formatCount , formatedMessage , formatedMessageIndex , type , o , monModifier , perDomain ,
 		levelName , domain , meta , code , hookData , messageData , isFormat , stack ;
 
+	// /!\ Any change here should be reflected in .receive()
+
 	if ( typeof level === 'number' ) {
 		if ( level >= this.levelArray.length ) { return Promise.resolved ; }
 		levelName = this.levelArray[ level ] ;
@@ -471,52 +473,14 @@ Logfella.prototype.log = function( level , ... args ) {
 		time: new Date()
 	} ;
 
-	return this.logData( data , true ) ;
+	return this.finalizeLog( data ) ;
 } ;
 
 
 
-Logfella.prototype.logData = function( data , internal ) {
+Logfella.prototype.finalizeLog = function( data ) {
 	var level = data.level ,
 		cache = null ;
-
-	if ( ! internal ) {
-		// If this is not an internal call, the following is duplicated from .log()
-		// It's unavoidable because of all early-out code.
-
-		// Should be done before early-out
-		if ( level >= 4 ) {
-			// The user may override and fucked that up, so we ensure we deal with numbers
-			if ( level >= 5 ) { this.mon.errors = + this.mon.errors + 1 || 1 ; }
-			else { this.mon.warnings = + this.mon.warnings + 1 || 1 ; }
-		}
-
-		// Level management should come first for early exit
-		let perDomain ;
-		if ( this.perDomain && ( perDomain = this.perDomain[ data.domain ] ) ) {
-			// Per-domain filtering
-			if (
-				level < ( perDomain.minLevel !== undefined ? perDomain.minLevel : this.minLevel ) ||
-				level > ( perDomain.maxLevel !== undefined ? perDomain.maxLevel : this.maxLevel )
-			) {
-				return Promise.resolved ;
-			}
-		}
-		else if ( level < this.minLevel || level > this.maxLevel ) {
-			return Promise.resolved ;
-		}
-
-		if ( data.monModifier && typeof data.monModifier === 'object' ) {
-			treeOps.autoReduce( this.mon , data.monModifier ) ;
-		}
-
-		// Call the mon hook, if any
-		if ( this.monHook ) { this.monHook( this.mon ) ; }
-
-		// If there is no transport, skip now... Should come after monitoring operation
-		if ( ! this.logTransports.length ) { return Promise.resolved ; }
-	}
-
 
 	// Finalize data
 	data.app = this.app ;
@@ -546,9 +510,47 @@ Logfella.prototype.logData = function( data , internal ) {
 
 
 
-// This method is used when receiving log information from a remote Logfella instance.
-// For instance, the receive function is like logData, it has no specific behavior.
-Logfella.prototype.receive = Logfella.prototype.logData ;
+// This method is used when receiving log information from a remote Logfella instance (with Bridge transport and a userland transfer method).
+Logfella.prototype.receive = function( data ) {
+	var level = data.level ;
+
+	// /!\ Any change in .log() should be reflected here.
+	// Duplicated code is unavoidable because of all early-out optimization code.
+
+	// Should be done before early-out
+	if ( level >= 4 ) {
+		// The user may override and fucked that up, so we ensure we deal with numbers
+		if ( level >= 5 ) { this.mon.errors = + this.mon.errors + 1 || 1 ; }
+		else { this.mon.warnings = + this.mon.warnings + 1 || 1 ; }
+	}
+
+	// Level management should come first for early exit
+	let perDomain ;
+	if ( this.perDomain && ( perDomain = this.perDomain[ data.domain ] ) ) {
+		// Per-domain filtering
+		if (
+			level < ( perDomain.minLevel !== undefined ? perDomain.minLevel : this.minLevel ) ||
+			level > ( perDomain.maxLevel !== undefined ? perDomain.maxLevel : this.maxLevel )
+		) {
+			return Promise.resolved ;
+		}
+	}
+	else if ( level < this.minLevel || level > this.maxLevel ) {
+		return Promise.resolved ;
+	}
+
+	if ( data.monModifier && typeof data.monModifier === 'object' ) {
+		treeOps.autoReduce( this.mon , data.monModifier ) ;
+	}
+
+	// Call the mon hook, if any
+	if ( this.monHook ) { this.monHook( this.mon ) ; }
+
+	// If there is no transport, skip now... Should come after monitoring operation
+	if ( ! this.logTransports.length ) { return Promise.resolved ; }
+
+	return this.finalizeLog( data ) ;
+} ;
 
 
 
