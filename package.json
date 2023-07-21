@@ -1,8 +1,8 @@
 {
   "name": "logfella",
-  "version": "1.4.2",
+  "version": "2.0.0",
   "engines": {
-    "node": ">=6.0.0"
+    "node": ">=16.13.0"
   },
   "description": "Log everything!",
   "main": "lib/Logfella.js",
@@ -12,9 +12,9 @@
   "dependencies": {
     "kung-fig-tree-ops": "^0.45.5",
     "logfella-common-transport": "^1.0.1",
-    "seventh": "^0.7.40",
-    "string-kit": "^0.17.1",
-    "tree-kit": "^0.7.4"
+    "seventh": "^0.8.2",
+    "string-kit": "^0.17.10",
+    "tree-kit": "^0.8.1"
   },
   "scripts": {
     "test": "tea-time -R dot"
