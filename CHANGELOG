@@ -1,4 +1,10 @@
 
+v2.0.2
+------
+
+Now the Console transport clean line by default if it's a TTY (send a 'move to column 1' and 'erase line after' escape sequences before writing anything)
+
+
 v2.0.0
 ------
 
