@@ -1,4 +1,10 @@
 
+v2.1.0
+------
+
+New log.*Once() API, log the formatted message only once per domain, e.g. log.warningOnce(), log.infoOnce(), etc...
+
+
 v2.0.4
 ------
 

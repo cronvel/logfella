@@ -1,6 +1,6 @@
 {
   "name": "logfella",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "engines": {
     "node": ">=16.13.0"
   },
@@ -14,7 +14,7 @@
     "logfella-common-transport": "^1.0.1",
     "seventh": "^0.9.2",
     "string-kit": "^0.19.2",
-    "tree-kit": "^0.8.7"
+    "tree-kit": "^0.8.8"
   },
   "scripts": {
     "test": "tea-time -R dot"

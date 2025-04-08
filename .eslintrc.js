@@ -2,13 +2,15 @@ module.exports = {
 	'root': true ,
 	'env': {
 		'browser': true ,
+		'node': true ,
 		'es6': true ,
-		'node': true
+		'es2022': true
 	} ,
 	'parserOptions': {
-		'ecmaVersion': 2018
+		'ecmaVersion': 2022
 	} ,
 	'extends': [ 'eslint:recommended' ] ,
+	'ignorePatterns': [ "*.min.js" ] ,
 	'rules': {
 		
 		/*
@@ -25,9 +27,9 @@ module.exports = {
 		'valid-typeof': 'error' ,
 		'no-unneeded-ternary': 'error' ,
 		'no-unused-vars': 'warn' ,	// During development phase, it's boring to clean unused var since they can be used later
-		'no-lonely-if': 'error' ,
+		'no-lonely-if': 'off' ,		// Can hurt semantic programming
 		'no-nested-ternary': 'off' ,	// Now I use the streamlined ternary operator a lot
-		'no-shadow': 'warn' ,
+		'no-shadow': 'error' ,
 		'no-shadow-restricted-names': 'error' ,
 		'require-atomic-updates': 'off' ,	// check for possible race condition on assignment, interesting but too nitpicky
 		
@@ -60,10 +62,9 @@ module.exports = {
 		'indent': [ 'error' , 'tab' , {
 			'SwitchCase': 1 ,
 			'MemberExpression': 1 ,
+			'flatTernaryExpressions': true
 		} ] ,
-		'newline-per-chained-call': [ 'error', {
-			'ignoreChainWithDepth': 2 
-		} ] ,
+		'newline-per-chained-call': 'off',
 		'no-multi-spaces': 'off' ,
 		'block-spacing': 'error' ,
 		'comma-spacing': [ 'error' , {
@@ -82,7 +83,7 @@ module.exports = {
 			'words': true ,
 			'nonwords': true ,
 			'overrides': {
-				'-': false ,
+				//'-': false ,
 			}
 		} ] ,
 		'space-in-parens': [ 'error' , 'always' , {
